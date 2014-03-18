@@ -6,7 +6,7 @@ interface.
 
 ## Usage (not fully implemented)
 Shuttle can be started with a default configuration, as well as its last
-confniguration state. The state configuration is updated on changes to the
+configuration state. The state configuration is updated on changes to the
 internal config. If the state config file doesn't exist, the default is loaded.
 
     $ ./shuttle -config default_config.json -state state_config.json

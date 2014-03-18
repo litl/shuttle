@@ -74,7 +74,6 @@ func newTimeoutListener(addr string, timeout time.Duration) (net.Listener, error
 		return nil, err
 	}
 
-	log.Println("listening with a timeout of", 100*time.Second)
 	tl := &timeoutListener{
 		Listener:  l,
 		rwTimeout: timeout,

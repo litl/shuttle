@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	Services = ServiceRegistry{
+	Registry = ServiceRegistry{
 		svcs: make(map[string]*Service, 0),
 	}
 )
@@ -275,7 +275,7 @@ func (s *Service) Start() (err error) {
 	}
 
 	go s.run()
-	Services.Add(s)
+	Registry.Add(s)
 
 	return nil
 }
@@ -301,6 +301,7 @@ func (s *Service) Get(name string) *Backend {
 	return nil
 }
 
+// Add a backend to this service
 func (s *Service) Add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
@@ -316,6 +317,7 @@ func (s *Service) Add(backend *Backend) {
 	s.Backends = append(s.Backends, backend)
 }
 
+// Remove a Backend by name
 func (s *Service) Remove(name string) *Backend {
 	s.Lock()
 	defer s.Unlock()
@@ -338,8 +340,11 @@ func (s *Service) run() {
 		for {
 			conn, err := s.listener.Accept()
 			if err != nil {
-				log.Println(err)
-				continue
+				if err := err.(*net.OpError); err.Temporary() {
+					continue
+				}
+				// we must be getting shut down
+				return
 			}
 
 			backend := s.next()
@@ -356,13 +361,16 @@ func (s *Service) run() {
 
 // Stop the Service's Accept loop by closing the Listener
 func (s *Service) Stop() {
+	s.Lock()
+	defer s.Unlock()
+
 	err := s.listener.Close()
 	if err != nil {
 		log.Println(err)
 	}
 }
 
-// Global container for all configured services.
+// ServiceRegistry is a global container for all configured services.
 type ServiceRegistry struct {
 	sync.Mutex
 	svcs map[string]*Service
@@ -382,6 +390,7 @@ func (s *ServiceRegistry) Remove(name string) *Service {
 	svc, ok := s.svcs[name]
 	if ok {
 		delete(s.svcs, name)
+		svc.Stop()
 		return svc
 	}
 	return nil
@@ -398,8 +407,8 @@ func (s *ServiceRegistry) Stats() []ServiceStat {
 	defer s.Unlock()
 
 	var stats []ServiceStat
-	for _, v := range s.svcs {
-		stats = append(stats, v.Stats())
+	for _, service := range s.svcs {
+		stats = append(stats, service.Stats())
 	}
 
 	return stats
@@ -417,13 +426,18 @@ func (s *ServiceRegistry) Config() []ServiceConfig {
 	return configs
 }
 
-func (s *ServiceRegistry) String() string {
+func (s *ServiceRegistry) Marshal() []byte {
 	stats := s.Stats()
 
-	j, err := json.MarshalIndent(stats, "", "  ")
+	jsonStats, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		log.Println("could not marshal services:", err)
-		return ""
+		return nil
 	}
-	return string(j)
+
+	return jsonStats
+}
+
+func (s *ServiceRegistry) String() string {
+	return string(s.Marshal())
 }

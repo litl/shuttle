@@ -10,15 +10,34 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func getConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := Registry.Config()
+
+	log.Printf("%+v", cfg)
+	cfgJson, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(cfgJson)
+	w.Write([]byte("\n"))
+}
+
+func getStats(w http.ResponseWriter, r *http.Request) {
+	w.Write(Registry.Marshal())
+	w.Write([]byte("\n"))
+}
+
 func getService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	svc := Services.Get(vars["service"])
-	if svc == nil {
+	service := Registry.Get(vars["service"])
+	if service == nil {
 		http.Error(w, "service not found", http.StatusNotFound)
 		return
 	}
-	fmt.Fprintln(w, svc)
+	fmt.Fprintln(w, service)
 }
 
 func postService(w http.ResponseWriter, r *http.Request) {
@@ -40,41 +59,34 @@ func postService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc := NewService(svcCfg)
+	service := NewService(svcCfg)
 
-	if e := svc.Start(); e != nil {
+	if e := service.Start(); e != nil {
 		// we can probably distinguish between 4xx and 5xx errors here at some point.
 		log.Println(err)
 		http.Error(w, e.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintln(w, svc)
+	go writeStateConfig()
+	fmt.Fprintln(w, service)
 }
 
 func deleteService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	svc := Services.Remove(vars["service"])
-	if svc == nil {
+	service := Registry.Remove(vars["service"])
+	if service == nil {
 		http.Error(w, "service not found", http.StatusNotFound)
 		return
 	}
 
-	fmt.Fprintln(w, svc)
-}
-
-func listServices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	fmt.Fprintln(w, Services.String())
+	go writeStateConfig()
+	fmt.Fprintln(w, service)
 }
 
 func getBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	svc := Services.Get(vars["service"])
+	svc := Registry.Get(vars["service"])
 	if svc == nil {
 		http.Error(w, "service not found", http.StatusNotFound)
 		return
@@ -92,8 +104,8 @@ func getBackend(w http.ResponseWriter, r *http.Request) {
 func postBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	svc := Services.Get(vars["service"])
-	if svc == nil {
+	service := Registry.Get(vars["service"])
+	if service == nil {
 		http.Error(w, "service not found", http.StatusNotFound)
 		return
 	}
@@ -116,12 +128,15 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 
 	backend := NewBackend(backendCfg)
 
-	svc.Add(backend)
+	service.Add(backend)
+
+	go writeStateConfig()
+	fmt.Fprintln(w, service)
 }
 
 func deleteBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	service := Services.Get(vars["service"])
+	service := Registry.Get(vars["service"])
 	if service == nil {
 		http.Error(w, "service not found", http.StatusNotFound)
 		return
@@ -132,4 +147,7 @@ func deleteBackend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "backend not found", http.StatusNotFound)
 		return
 	}
+
+	go writeStateConfig()
+	fmt.Fprintln(w, service)
 }

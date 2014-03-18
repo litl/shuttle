@@ -16,9 +16,13 @@ var (
 	// Location of the live config which is updated on every state change.
 	// The default config is loaded if this file does not exist.
 	stateConfig string
+
+	// Listen address for the http server
+	listenAddr string
 )
 
 func init() {
+	flag.StringVar(&listenAddr, "http", "127.0.0.1:9090", "http server address")
 	flag.StringVar(&defaultConfig, "config", "", "default config file")
 	flag.StringVar(&stateConfig, "state", "", "updated config which reflects the internal state")
 
@@ -27,7 +31,7 @@ func init() {
 
 func main() {
 	r := mux.NewRouter()
-	r.HandleFunc("/", listServices).Methods("GET")
+	r.HandleFunc("/", getStats).Methods("GET")
 	r.HandleFunc("/config", getConfig).Methods("GET")
 	r.HandleFunc("/{service}", getService).Methods("GET")
 	r.HandleFunc("/{service}", postService).Methods("PUT", "POST")
@@ -39,5 +43,5 @@ func main() {
 
 	loadConfig()
 
-	log.Fatal(http.ListenAndServe(":9090", nil))
+	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
