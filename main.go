@@ -1,12 +1,6 @@
 package main
 
-import (
-	"flag"
-	"log"
-	"net/http"
-
-	"github.com/gorilla/mux"
-)
+import "flag"
 
 var (
 	// Location of the default config.
@@ -30,18 +24,6 @@ func init() {
 }
 
 func main() {
-	r := mux.NewRouter()
-	r.HandleFunc("/", getStats).Methods("GET")
-	r.HandleFunc("/config", getConfig).Methods("GET")
-	r.HandleFunc("/{service}", getService).Methods("GET")
-	r.HandleFunc("/{service}", postService).Methods("PUT", "POST")
-	r.HandleFunc("/{service}", deleteService).Methods("DELETE")
-	r.HandleFunc("/{service}/{backend}", getBackend).Methods("GET")
-	r.HandleFunc("/{service}/{backend}", postBackend).Methods("PUT", "POST")
-	r.HandleFunc("/{service}/{backend}", deleteBackend).Methods("DELETE")
-	http.Handle("/", r)
-
 	loadConfig()
-
-	log.Fatal(http.ListenAndServe(listenAddr, nil))
+	startHTTPServer()
 }

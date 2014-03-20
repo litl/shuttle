@@ -67,10 +67,11 @@ type BackendConfig struct {
 
 func NewBackend(cfg BackendConfig) *Backend {
 	b := &Backend{
-		Name:   cfg.Name,
-		Addr:   cfg.Addr,
-		Check:  cfg.Check,
-		Weight: cfg.Weight,
+		Name:      cfg.Name,
+		Addr:      cfg.Addr,
+		Check:     cfg.Check,
+		Weight:    cfg.Weight,
+		stopCheck: make(chan interface{}),
 	}
 	return b
 }
@@ -131,8 +132,12 @@ func (b *Backend) Stop() {
 }
 
 func (b *Backend) check() {
+	if b.Check == "" {
+		return
+	}
+
 	up := true
-	if c, e := net.DialTimeout("tcp", b.Addr, b.dialTimeout); e == nil {
+	if c, e := net.DialTimeout("tcp", b.Check, b.dialTimeout); e == nil {
 		c.Close()
 	} else {
 		up = false
