@@ -13,7 +13,6 @@ import (
 func getConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := Registry.Config()
 
-	log.Printf("%+v", cfg)
 	cfgJson, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

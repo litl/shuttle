@@ -15,8 +15,6 @@ var (
 	}
 )
 
-// TODO: updating the Service left a hidden backend
-
 type Backend struct {
 	sync.Mutex
 	Name   string
@@ -32,8 +30,17 @@ type Backend struct {
 
 	// these are loaded from the service, se a backend doesn't need to acces
 	// the service struct at all.
-	dialTimeout time.Duration
-	rwTimeout   time.Duration
+	dialTimeout   time.Duration
+	rwTimeout     time.Duration
+	checkInterval time.Duration
+	errLim        uint64
+	rise          uint64
+	riseCount     uint64
+	fall          uint64
+	fallCount     uint64
+
+	// stop the health-check loop
+	stopCheck chan interface{}
 }
 
 // The json stats we return for the backend
@@ -115,6 +122,52 @@ func (b Backend) String() string {
 	return string(j)
 }
 
+func (b *Backend) Start() {
+	go b.healthCheck()
+}
+
+func (b *Backend) Stop() {
+	close(b.stopCheck)
+}
+
+func (b *Backend) check() {
+	up := true
+	if c, e := net.DialTimeout("tcp", b.Addr, b.dialTimeout); e == nil {
+		c.Close()
+	} else {
+		up = false
+	}
+
+	b.Lock()
+	defer b.Unlock()
+	if up {
+		b.fallCount = 0
+		b.riseCount++
+		if b.riseCount >= b.rise {
+			b.Up = true
+		}
+	} else {
+		b.riseCount = 0
+		b.fallCount++
+		if b.fallCount >= b.fall {
+			b.Up = false
+		}
+	}
+}
+
+// Periodically check the status of this backend
+// TODO: ErrLim, Rise and Fall
+func (b *Backend) healthCheck() {
+	for {
+		select {
+		case <-b.stopCheck:
+			return
+		case <-time.After(b.checkInterval):
+			b.check()
+		}
+	}
+}
+
 type Service struct {
 	sync.Mutex
 	Name          string
@@ -191,8 +244,18 @@ func NewService(cfg ServiceConfig) *Service {
 		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Second,
 	}
 
+	if s.Inter == 0 {
+		s.Inter = 2
+	}
+	if s.Rise == 0 {
+		s.Rise = 2
+	}
+	if s.Fall == 0 {
+		s.Fall = 2
+	}
+
 	for _, b := range cfg.Backends {
-		s.Backends = append(s.Backends, NewBackend(b))
+		s.Add(NewBackend(b))
 	}
 
 	return s
@@ -314,7 +377,11 @@ func (s *Service) Add(backend *Backend) {
 
 	backend.Up = true
 	backend.rwTimeout = s.ServerTimeout
+	backend.dialTimeout = s.DialTimeout
+	backend.checkInterval = time.Duration(s.Inter) * time.Second
+
 	s.Backends = append(s.Backends, backend)
+	backend.Start()
 }
 
 // Remove a Backend by name
@@ -328,6 +395,7 @@ func (s *Service) Remove(name string) *Backend {
 			deleted := b
 			s.Backends[i], s.Backends[last] = s.Backends[last], nil
 			s.Backends = s.Backends[:last]
+			deleted.Stop()
 			return deleted
 		}
 	}
@@ -359,10 +427,15 @@ func (s *Service) run() {
 	}()
 }
 
-// Stop the Service's Accept loop by closing the Listener
+// Stop the Service's Accept loop by closing the Listener,
+// and stop all backends for this service.
 func (s *Service) Stop() {
 	s.Lock()
 	defer s.Unlock()
+
+	for _, backend := range s.Backends {
+		backend.Stop()
+	}
 
 	err := s.listener.Close()
 	if err != nil {
