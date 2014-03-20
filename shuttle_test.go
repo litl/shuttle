@@ -28,7 +28,7 @@ func (s *BasicSuite) SetUpTest(c *C) {
 	// start 4 possible backend servers
 	ports := []string{"9001", "9002", "9003", "9004"}
 	for _, p := range ports {
-		server, err := NewTestServer("127.0.0.1:" + p)
+		server, err := NewTestServer("127.0.0.1:"+p, c)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -45,6 +45,7 @@ func (s *BasicSuite) SetUpTest(c *C) {
 	}
 }
 
+// Add a default backend for the next server we have running
 func (s *BasicSuite) AddBackend(check bool, c *C) {
 	next := len(s.service.Backends)
 	if next >= len(s.servers) {
@@ -144,4 +145,20 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 
 	stats = s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, false)
+}
+
+func (s *BasicSuite) TestUpdateBackend(c *C) {
+	s.AddBackend(true, c)
+
+	cfg := s.service.Config()
+	backendCfg := cfg.Backends[0]
+
+	c.Assert(backendCfg.Check, Matches, backendCfg.Addr)
+
+	backendCfg.Check = ""
+	s.service.Add(NewBackend(backendCfg))
+
+	cfg = s.service.Config()
+	c.Assert(len(cfg.Backends), Equals, 1)
+	c.Assert(cfg.Backends[0].Check, Matches, "")
 }

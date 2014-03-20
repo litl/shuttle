@@ -2,8 +2,9 @@ package main
 
 import (
 	"io"
-	"log"
 	"net"
+
+	. "launchpad.net/gocheck"
 )
 
 type testServer struct {
@@ -13,7 +14,7 @@ type testServer struct {
 }
 
 // Start a tcp server which responds with it's addr after every read.
-func NewTestServer(addr string) (*testServer, error) {
+func NewTestServer(addr string, c *C) (*testServer, error) {
 	s := &testServer{
 		addr: addr,
 	}
@@ -35,11 +36,11 @@ func NewTestServer(addr string) (*testServer, error) {
 				defer conn.Close()
 				buff := make([]byte, 1024)
 				if _, err := conn.Read(buff); err != nil {
-					log.Printf("test server '%s' error: %s", addr, err)
+					c.Logf("test server '%s' error: %s", addr, err)
 					return
 				}
 				if _, err := io.WriteString(conn, addr); err != nil {
-					log.Printf("test server '%s' error: %s", addr, err)
+					c.Logf("test server '%s' error: %s", addr, err)
 					return
 				}
 				// make one more read to wait until EOF

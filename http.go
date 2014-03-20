@@ -103,12 +103,6 @@ func getBackend(w http.ResponseWriter, r *http.Request) {
 func postBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	service := Registry.Get(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
-		return
-	}
-
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Println(err)
@@ -126,6 +120,12 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	backend := NewBackend(backendCfg)
+
+	service := Registry.Get(vars["service"])
+	if service == nil {
+		http.Error(w, "service not found", http.StatusNotFound)
+		return
+	}
 
 	service.Add(backend)
 

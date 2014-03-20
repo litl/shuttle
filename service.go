@@ -389,16 +389,20 @@ func (s *Service) Add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
-	for _, b := range s.Backends {
-		if b.Name == backend.Name {
-			return
-		}
-	}
-
 	backend.Up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
 	backend.checkInterval = time.Duration(s.Inter) * time.Second
+
+	// replace an exiting backend if we have it.
+	for i, b := range s.Backends {
+		if b.Name == backend.Name {
+			b.Stop()
+			s.Backends[i] = backend
+			backend.Start()
+			return
+		}
+	}
 
 	s.Backends = append(s.Backends, backend)
 	backend.Start()
@@ -512,8 +516,8 @@ func (s *ServiceRegistry) Config() []ServiceConfig {
 	defer s.Unlock()
 
 	var configs []ServiceConfig
-	for _, v := range s.svcs {
-		configs = append(configs, v.Config())
+	for _, service := range s.svcs {
+		configs = append(configs, service.Config())
 	}
 
 	return configs
