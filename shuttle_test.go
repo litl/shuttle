@@ -40,7 +40,7 @@ func (s *BasicSuite) SetUpTest(c *C) {
 		Addr: "127.0.0.1:9999",
 	}
 	s.service = NewService(svcCfg)
-	if err := s.service.Start(); err != nil {
+	if err := Registry.Add(s.service); err != nil {
 		c.Fatal(err)
 	}
 }
@@ -71,7 +71,8 @@ func (s *BasicSuite) TearDownTest(c *C) {
 		s.Stop()
 	}
 
-	Registry.Remove(s.service.Name)
+	removed := Registry.Remove(s.service.Name)
+	c.Logf("svc:%p removed:%p", s.service, removed)
 }
 
 // Connect to address, and check response after write.

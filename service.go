@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -239,7 +238,6 @@ func NewService(cfg ServiceConfig) *Service {
 	s := &Service{
 		Name:          cfg.Name,
 		Addr:          cfg.Addr,
-		Balance:       cfg.Balance,
 		Inter:         cfg.Inter,
 		ErrLim:        cfg.ErrLim,
 		Fall:          cfg.Fall,
@@ -262,6 +260,10 @@ func NewService(cfg ServiceConfig) *Service {
 	for _, b := range cfg.Backends {
 		s.Add(NewBackend(b))
 	}
+
+	// set balance here so the correct balance func
+	// gets assigned to Service.next
+	s.SetBalance(cfg.Balance)
 
 	return s
 }
@@ -322,7 +324,7 @@ func (s *Service) SetBalance(balance string) {
 	defer s.Unlock()
 
 	switch balance {
-	case "RR":
+	case "RR", "":
 		s.next = s.roundRobin
 	case "LC":
 		s.next = s.leastConn
@@ -336,18 +338,6 @@ func (s *Service) Start() (err error) {
 	s.Lock()
 	defer s.Unlock()
 
-	switch s.Balance {
-	case "":
-		s.Balance = "RR"
-		fallthrough
-	case "RR":
-		s.next = s.roundRobin
-	case "LC":
-		s.next = s.leastConn
-	default:
-		return fmt.Errorf("invalid balancing algorithm")
-	}
-
 	s.listener, err = newTimeoutListener(s.Addr, s.ClientTimeout)
 	if err != nil {
 		return err
@@ -357,9 +347,7 @@ func (s *Service) Start() (err error) {
 		s.Backends = make([]*Backend, 0)
 	}
 
-	go s.run()
-	Registry.Add(s)
-
+	s.run()
 	return nil
 }
 
@@ -473,11 +461,12 @@ type ServiceRegistry struct {
 	svcs map[string]*Service
 }
 
-func (s *ServiceRegistry) Add(svc *Service) {
+func (s *ServiceRegistry) Add(svc *Service) error {
 	s.Lock()
 	defer s.Unlock()
 
 	s.svcs[svc.Name] = svc
+	return svc.Start()
 }
 
 func (s *ServiceRegistry) Remove(name string) *Service {

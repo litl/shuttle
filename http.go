@@ -60,7 +60,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 
 	service := NewService(svcCfg)
 
-	if e := service.Start(); e != nil {
+	if e := Registry.Add(service); e != nil {
 		// we can probably distinguish between 4xx and 5xx errors here at some point.
 		log.Println(err)
 		http.Error(w, e.Error(), http.StatusInternalServerError)
