@@ -8,11 +8,12 @@ import (
 
 type testServer struct {
 	addr     string
+	sig      string
 	listener net.Listener
 }
 
-// Start a tcp server which responds with sig after every read.
-func NewTestServer(addr, sig string) (*testServer, error) {
+// Start a tcp server which responds with it's addr after every read.
+func NewTestServer(addr string) (*testServer, error) {
 	s := &testServer{
 		addr: addr,
 	}
@@ -27,20 +28,18 @@ func NewTestServer(addr, sig string) (*testServer, error) {
 		for {
 			conn, err := s.listener.Accept()
 			if err != nil {
-				log.Printf("test server '%s' exiting", sig)
 				return
 			}
 
-			log.Println("received connected on test server:", sig)
 			go func() {
 				defer conn.Close()
 				buff := make([]byte, 1024)
 				if _, err := conn.Read(buff); err != nil {
-					log.Printf("test server '%s' error: %s", sig, err)
+					log.Printf("test server '%s' error: %s", addr, err)
 					return
 				}
-				if _, err := io.WriteString(conn, sig); err != nil {
-					log.Printf("test server '%s' error: %s", sig, err)
+				if _, err := io.WriteString(conn, addr); err != nil {
+					log.Printf("test server '%s' error: %s", addr, err)
 					return
 				}
 				// make one more read to wait until EOF

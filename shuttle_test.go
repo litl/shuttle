@@ -1,175 +1,147 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"testing"
+	"time"
+
+	. "launchpad.net/gocheck"
 )
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+func Test(t *testing.T) { TestingT(t) }
+
+type BasicSuite struct {
+	servers []*testServer
+	service *Service
+}
+
+var _ = Suite(&BasicSuite{})
+
+func (s *BasicSuite) SetUpTest(c *C) {
+	// start 4 possible backend servers
+	ports := []string{"9001", "9002", "9003", "9004"}
+	for _, p := range ports {
+		server, err := NewTestServer("127.0.0.1:" + p)
+		if err != nil {
+			c.Fatal(err)
+		}
+		s.servers = append(s.servers, server)
+	}
+
+	svcCfg := ServiceConfig{
+		Name: "testService",
+		Addr: "127.0.0.1:9999",
+	}
+	s.service = NewService(svcCfg)
+	if err := s.service.Start(); err != nil {
+		c.Fatal(err)
+	}
+}
+
+func (s *BasicSuite) AddBackend(check bool, c *C) {
+	next := len(s.service.Backends)
+	if next >= len(s.servers) {
+		c.Fatal("no more servers")
+	}
+
+	name := fmt.Sprintf("backend_%d", next)
+	cfg := BackendConfig{
+		Name: name,
+		Addr: s.servers[next].addr,
+	}
+
+	if check {
+		cfg.Check = cfg.Addr
+	}
+
+	s.service.Add(NewBackend(cfg))
+}
+
+// shutdown our backend servers
+func (s *BasicSuite) TearDownTest(c *C) {
+	for _, s := range s.servers {
+		s.Stop()
+	}
+
+	Registry.Remove(s.service.Name)
+}
+
 // Connect to address, and check response after write.
-func checkSig(addr, sig string, t *testing.T) {
+func checkResp(addr, expected string, c *C) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 	defer conn.Close()
 
 	if _, err := io.WriteString(conn, "testing\n"); err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 
 	buff := make([]byte, 1024)
 	n, err := conn.Read(buff)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 
 	resp := string(buff[:n])
-	if sig != "" && resp != sig {
-		t.Fatal("incorrect reponse:", resp)
-	}
+	c.Assert(resp, Matches, expected)
 }
 
-func TestSingleBackend(t *testing.T) {
-	sigString := "single"
+func (s *BasicSuite) TestSingleBackend(c *C) {
+	s.AddBackend(false, c)
 
-	s, err := NewTestServer("127.0.0.1:9876", sigString)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Stop()
-
-	serviceCfg := ServiceConfig{
-		Name: "testService",
-		Addr: "127.0.0.1:9999",
-	}
-
-	backend := BackendConfig{
-		Name: "testBackend",
-		Addr: "127.0.0.1:9876",
-	}
-	serviceCfg.Backends = append(serviceCfg.Backends, backend)
-
-	service := NewService(serviceCfg)
-	if err := service.Start(); err != nil {
-		t.Fatal(err)
-	}
-
-	checkSig(serviceCfg.Addr, sigString, t)
-	Registry.Remove("testService")
+	checkResp(s.service.Addr, s.servers[0].addr, c)
 }
 
-func TestRoundRobin(t *testing.T) {
-	sigOne := "first server"
-	sigTwo := "second server"
+func (s *BasicSuite) TestRoundRobin(c *C) {
+	s.AddBackend(false, c)
+	s.AddBackend(false, c)
 
-	s1, err := NewTestServer("127.0.0.1:9001", sigOne)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s1.Stop()
-	s2, err := NewTestServer("127.0.0.1:9002", sigTwo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s2.Stop()
-
-	serviceCfg := ServiceConfig{
-		Name:    "testService",
-		Addr:    "127.0.0.1:9000",
-		Balance: "RR",
-	}
-
-	backend1 := BackendConfig{
-		Name: "testBackendOne",
-		Addr: "127.0.0.1:9001",
-	}
-	backend2 := BackendConfig{
-		Name: "testBackendTwo",
-		Addr: "127.0.0.1:9002",
-	}
-
-	serviceCfg.Backends = append(serviceCfg.Backends, backend1, backend2)
-
-	service := NewService(serviceCfg)
-	if err := service.Start(); err != nil {
-		t.Fatal(err)
-	}
-
-	checkSig(serviceCfg.Addr, sigOne, t)
-	checkSig(serviceCfg.Addr, sigTwo, t)
-	checkSig(serviceCfg.Addr, sigOne, t)
-	checkSig(serviceCfg.Addr, sigTwo, t)
-	Registry.Remove("testService")
+	checkResp(s.service.Addr, s.servers[0].addr, c)
+	checkResp(s.service.Addr, s.servers[1].addr, c)
+	checkResp(s.service.Addr, s.servers[0].addr, c)
+	checkResp(s.service.Addr, s.servers[1].addr, c)
 }
 
-func TestLeastConn(t *testing.T) {
-	sigOne := "first server"
-	sigTwo := "second server"
-	sigThree := "third server"
-
-	s1, err := NewTestServer("127.0.0.1:9001", sigOne)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s1.Stop()
-	s2, err := NewTestServer("127.0.0.1:9002", sigTwo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s2.Stop()
-
-	s3, err := NewTestServer("127.0.0.1:9003", sigThree)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s3.Stop()
-
-	serviceCfg := ServiceConfig{
-		Name:    "testService",
-		Addr:    "127.0.0.1:9000",
-		Balance: "LC",
-	}
-
-	backend1 := BackendConfig{
-		Name: "testBackendOne",
-		Addr: "127.0.0.1:9001",
-	}
-	backend2 := BackendConfig{
-		Name: "testBackendTwo",
-		Addr: "127.0.0.1:9002",
-	}
-	backend3 := BackendConfig{
-		Name: "testBackendThree",
-		Addr: "127.0.0.1:9003",
-	}
-
-	// only add the first two
-	serviceCfg.Backends = append(serviceCfg.Backends, backend1, backend2)
-
-	service := NewService(serviceCfg)
-	if err := service.Start(); err != nil {
-		t.Fatal(err)
-	}
+func (s *BasicSuite) TestLeastConn(c *C) {
+	s.service.SetBalance("LC")
+	s.AddBackend(false, c)
+	s.AddBackend(false, c)
 
 	// tie up 4 connections to the backends
 	for i := 0; i < 4; i++ {
-		c, e := net.Dial("tcp", serviceCfg.Addr)
+		conn, e := net.Dial("tcp", s.service.Addr)
 		if e != nil {
-			t.Fatal(e)
+			c.Fatal(e)
 		}
-		defer c.Close()
+		defer conn.Close()
 	}
 
-	// now add a third backend
-	service.Add(NewBackend(backend3))
-	checkSig(serviceCfg.Addr, sigThree, t)
-	checkSig(serviceCfg.Addr, sigThree, t)
+	s.AddBackend(false, c)
 
-	Registry.Remove("testService")
+	checkResp(s.service.Addr, s.servers[2].addr, c)
+	checkResp(s.service.Addr, s.servers[2].addr, c)
+}
+
+func (s *BasicSuite) TestFailedCheck(c *C) {
+	s.service.Inter = 1
+	s.service.Fall = 1
+	s.AddBackend(true, c)
+
+	stats := s.service.Stats()
+	c.Assert(stats.Backends[0].Up, Equals, true)
+
+	s.servers[0].Stop()
+	time.Sleep(1200 * time.Millisecond)
+
+	stats = s.service.Stats()
+	c.Assert(stats.Backends[0].Up, Equals, false)
 }
