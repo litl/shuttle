@@ -28,8 +28,7 @@ func loadConfig() {
 		}
 
 		for _, svcCfg := range svcs {
-			svc := NewService(svcCfg)
-			if e := svc.Start(); e != nil {
+			if e := Registry.AddService(svcCfg); e != nil {
 				log.Println("service error:", e)
 			}
 		}
@@ -48,7 +47,7 @@ func writeStateConfig() {
 		return
 	}
 
-	cfg := Registry.Marshal()
+	cfg := marshal(Registry.Config())
 	if len(cfg) == 0 {
 		return
 	}

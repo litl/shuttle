@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"log"
 	"net"
@@ -109,13 +108,8 @@ func (b *Backend) Config() BackendConfig {
 }
 
 // Backends and Servers Stringify themselves directly into their config format.
-func (b Backend) String() string {
-	j, err := json.MarshalIndent(b.Stats(), "", "  ")
-	if err != nil {
-		log.Println("Backend JSON error:", err)
-		return ""
-	}
-	return string(j)
+func (b *Backend) String() string {
+	return string(marshal(b.Config))
 }
 
 func (b *Backend) Start() {

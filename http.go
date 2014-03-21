@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,32 +10,23 @@ import (
 )
 
 func getConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := Registry.Config()
-
-	cfgJson, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(cfgJson)
-	w.Write([]byte("\n"))
+	w.Write(marshal(Registry.Config()))
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
-	w.Write(Registry.Marshal())
-	w.Write([]byte("\n"))
+	w.Write(marshal(Registry.Stats()))
 }
 
 func getService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	service := Registry.Get(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	serviceStats, err := Registry.ServiceStats(vars["service"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	fmt.Fprintln(w, service)
+
+	w.Write(marshal(serviceStats))
 }
 
 func postService(w http.ResponseWriter, r *http.Request) {
@@ -58,9 +48,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service := NewService(svcCfg)
-
-	if e := Registry.Add(service); e != nil {
+	if e := Registry.AddService(svcCfg); e != nil {
 		// we can probably distinguish between 4xx and 5xx errors here at some point.
 		log.Println(err)
 		http.Error(w, e.Error(), http.StatusInternalServerError)
@@ -68,36 +56,30 @@ func postService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go writeStateConfig()
-	fmt.Fprintln(w, service)
+	w.Write(marshal(Registry.Config()))
 }
 
 func deleteService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	service := Registry.Remove(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	err := Registry.RemoveService(vars["service"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-
-	go writeStateConfig()
-	fmt.Fprintln(w, service)
 }
 
 func getBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	svc := Registry.Get(vars["service"])
-	if svc == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	serviceName := vars["service"]
+	backendName := vars["backend"]
+
+	backend, err := Registry.BackendStats(serviceName, backendName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	backend := svc.Get(vars["backend"])
-	if backend == nil {
-		http.Error(w, "backend not found", http.StatusNotFound)
-		return
-	}
-
-	fmt.Fprintln(w, backend)
+	w.Write(marshal(backend))
 }
 
 func postBackend(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +93,10 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	backendCfg := BackendConfig{Name: vars["backend"]}
+	backendName := vars["backend"]
+	serviceName := vars["service"]
+
+	backendCfg := BackendConfig{Name: backendName}
 	err = json.Unmarshal(body, &backendCfg)
 	if err != nil {
 		log.Println(err)
@@ -119,36 +104,28 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend := NewBackend(backendCfg)
-
-	service := Registry.Get(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	if err := Registry.AddBackend(serviceName, backendCfg); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	service.Add(backend)
-
 	go writeStateConfig()
-	fmt.Fprintln(w, service)
+	w.Write(marshal(Registry.Config()))
 }
 
 func deleteBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	service := Registry.Get(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
-		return
-	}
 
-	backend := service.Remove(vars["backend"])
-	if backend == nil {
-		http.Error(w, "backend not found", http.StatusNotFound)
+	serviceName := vars["service"]
+	backendName := vars["backend"]
+
+	if err := Registry.RemoveBackend(serviceName, backendName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	go writeStateConfig()
-	fmt.Fprintln(w, service)
+	w.Write(marshal(Registry.Config()))
 }
 
 func startHTTPServer() {

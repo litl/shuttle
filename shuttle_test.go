@@ -39,10 +39,12 @@ func (s *BasicSuite) SetUpTest(c *C) {
 		Name: "testService",
 		Addr: "127.0.0.1:9999",
 	}
-	s.service = NewService(svcCfg)
-	if err := Registry.Add(s.service); err != nil {
+
+	if err := Registry.AddService(svcCfg); err != nil {
 		c.Fatal(err)
 	}
+
+	s.service = Registry.GetService(svcCfg.Name)
 }
 
 // Add a default backend for the next server we have running
@@ -62,7 +64,7 @@ func (s *BasicSuite) AddBackend(check bool, c *C) {
 		cfg.Check = cfg.Addr
 	}
 
-	s.service.Add(NewBackend(cfg))
+	s.service.add(NewBackend(cfg))
 }
 
 // shutdown our backend servers
@@ -71,7 +73,7 @@ func (s *BasicSuite) TearDownTest(c *C) {
 		s.Stop()
 	}
 
-	removed := Registry.Remove(s.service.Name)
+	removed := Registry.RemoveService(s.service.Name)
 	c.Logf("svc:%p removed:%p", s.service, removed)
 }
 
@@ -176,7 +178,7 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 	c.Assert(backendCfg.Check, Matches, backendCfg.Addr)
 
 	backendCfg.Check = ""
-	s.service.Add(NewBackend(backendCfg))
+	s.service.add(NewBackend(backendCfg))
 
 	// see if the config reflects the new backend
 	cfg = s.service.Config()

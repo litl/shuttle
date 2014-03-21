@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net"
 	"sync"
@@ -100,7 +99,7 @@ func NewService(cfg ServiceConfig) *Service {
 	}
 
 	for _, b := range cfg.Backends {
-		s.Add(NewBackend(b))
+		s.add(NewBackend(b))
 	}
 
 	switch cfg.Balance {
@@ -165,34 +164,11 @@ func (s *Service) Config() ServiceConfig {
 	return config
 }
 
-// Fill out and verify service
-func (s *Service) Start() (err error) {
-	s.Lock()
-	defer s.Unlock()
-
-	s.listener, err = newTimeoutListener(s.Addr, s.ClientTimeout)
-	if err != nil {
-		return err
-	}
-
-	if s.Backends == nil {
-		s.Backends = make([]*Backend, 0)
-	}
-
-	s.run()
-	return nil
+func (s *Service) String() string {
+	return string(marshal(s.Config()))
 }
 
-func (s Service) String() string {
-	j, err := json.MarshalIndent(s.Stats(), "", "  ")
-	if err != nil {
-		log.Println("Service JSON error:", err)
-		return ""
-	}
-	return string(j)
-}
-
-func (s *Service) Get(name string) *Backend {
+func (s *Service) get(name string) *Backend {
 	s.Lock()
 	defer s.Unlock()
 
@@ -204,8 +180,8 @@ func (s *Service) Get(name string) *Backend {
 	return nil
 }
 
-// Add a backend to this service
-func (s *Service) Add(backend *Backend) {
+// Add or replace a Backend in this service
+func (s *Service) add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -229,7 +205,7 @@ func (s *Service) Add(backend *Backend) {
 }
 
 // Remove a Backend by name
-func (s *Service) Remove(name string) *Backend {
+func (s *Service) remove(name string) bool {
 	s.Lock()
 	defer s.Unlock()
 
@@ -240,9 +216,27 @@ func (s *Service) Remove(name string) *Backend {
 			s.Backends[i], s.Backends[last] = s.Backends[last], nil
 			s.Backends = s.Backends[:last]
 			deleted.Stop()
-			return deleted
+			return true
 		}
 	}
+	return false
+}
+
+// Fill out and verify service
+func (s *Service) start() (err error) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.listener, err = newTimeoutListener(s.Addr, s.ClientTimeout)
+	if err != nil {
+		return err
+	}
+
+	if s.Backends == nil {
+		s.Backends = make([]*Backend, 0)
+	}
+
+	s.run()
 	return nil
 }
 
@@ -274,7 +268,7 @@ func (s *Service) run() {
 
 // Stop the Service's Accept loop by closing the Listener,
 // and stop all backends for this service.
-func (s *Service) Stop() {
+func (s *Service) stop() {
 	s.Lock()
 	defer s.Unlock()
 
