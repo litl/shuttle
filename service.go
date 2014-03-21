@@ -103,9 +103,14 @@ func NewService(cfg ServiceConfig) *Service {
 		s.Add(NewBackend(b))
 	}
 
-	// set balance here so the correct balance func
-	// gets assigned to Service.next
-	s.SetBalance(cfg.Balance)
+	switch cfg.Balance {
+	case "RR", "":
+		s.next = s.roundRobin
+	case "LC":
+		s.next = s.leastConn
+	default:
+		log.Printf("invalid balancing algorithm '%s'", cfg.Balance)
+	}
 
 	return s
 }
@@ -158,21 +163,6 @@ func (s *Service) Config() ServiceConfig {
 	}
 
 	return config
-}
-
-// Change the service's balancing algorithm
-func (s *Service) SetBalance(balance string) {
-	s.Lock()
-	defer s.Unlock()
-
-	switch balance {
-	case "RR", "":
-		s.next = s.roundRobin
-	case "LC":
-		s.next = s.leastConn
-	default:
-		log.Printf("invalid balancing algorithm '%s'", balance)
-	}
 }
 
 // Fill out and verify service
@@ -270,6 +260,7 @@ func (s *Service) run() {
 			}
 
 			backend := s.next()
+
 			if backend == nil {
 				log.Println("error: no backend for", s.Name)
 				conn.Close()

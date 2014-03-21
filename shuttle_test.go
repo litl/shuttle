@@ -114,7 +114,9 @@ func (s *BasicSuite) TestRoundRobin(c *C) {
 }
 
 func (s *BasicSuite) TestLeastConn(c *C) {
-	s.service.SetBalance("LC")
+	// this assignment triggers race detection
+	s.service.next = s.service.leastConn
+
 	s.AddBackend(false, c)
 	s.AddBackend(false, c)
 
