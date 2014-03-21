@@ -16,7 +16,10 @@ var (
 // marshal whatever we've got with out default indentation
 // swallowing errors.
 func marshal(i interface{}) []byte {
-	jsonBytes, _ := json.MarshalIndent(i, "", "  ")
+	jsonBytes, err := json.MarshalIndent(i, "", "  ")
+	if err != nil {
+		log.Println("error encoding json:", err)
+	}
 	return append(jsonBytes, '\n')
 }
 
@@ -91,6 +94,17 @@ func (s *ServiceRegistry) ServiceStats(serviceName string) (ServiceStat, error) 
 		return ServiceStat{}, ErrNoService
 	}
 	return service.Stats(), nil
+}
+
+func (s *ServiceRegistry) ServiceConfig(serviceName string) (ServiceConfig, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	service, ok := s.svcs[serviceName]
+	if !ok {
+		return ServiceConfig{}, ErrNoService
+	}
+	return service.Config(), nil
 }
 
 func (s *ServiceRegistry) BackendStats(serviceName, backendName string) (BackendStat, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"testing"
@@ -12,7 +13,8 @@ import (
 )
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	// log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(ioutil.Discard)
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -73,8 +75,10 @@ func (s *BasicSuite) TearDownTest(c *C) {
 		s.Stop()
 	}
 
-	removed := Registry.RemoveService(s.service.Name)
-	c.Logf("svc:%p removed:%p", s.service, removed)
+	err := Registry.RemoveService(s.service.Name)
+	if err != nil {
+		c.Fatalf("could not remove service '%s': %s", s.service.Name, err)
+	}
 }
 
 // Connect to address, and check response after write.
