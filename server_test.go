@@ -36,11 +36,15 @@ func NewTestServer(addr string, c *C) (*testServer, error) {
 				defer conn.Close()
 				buff := make([]byte, 1024)
 				if _, err := conn.Read(buff); err != nil {
-					c.Logf("test server '%s' error: %s", addr, err)
+					if err != io.EOF {
+						c.Logf("test server '%s' error: %s", addr, err)
+					}
 					return
 				}
 				if _, err := io.WriteString(conn, addr); err != nil {
-					c.Logf("test server '%s' error: %s", addr, err)
+					if err != io.EOF {
+						c.Logf("test server '%s' error: %s", addr, err)
+					}
 					return
 				}
 				// make one more read to wait until EOF

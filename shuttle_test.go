@@ -141,14 +141,31 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 	stats := s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
 
+	// Stop the server, and see if the backend shows Down after our check
+	// interval.
 	s.servers[0].Stop()
 	time.Sleep(1200 * time.Millisecond)
 
 	stats = s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, false)
+
+	// now try and connect to the service
+	conn, err := net.Dial("tcp", s.service.Addr)
+	if err != nil {
+		// we should still get an initial connection
+		c.Fatal(err)
+	}
+
+	b := make([]byte, 1024)
+	n, err := conn.Read(b)
+	if n != 0 || err != io.EOF {
+		c.Fatal("connection should have been closed")
+	}
 }
 
 func (s *BasicSuite) TestUpdateBackend(c *C) {
+	s.service.Inter = 1
+	s.service.Fall = 1
 	s.AddBackend(true, c)
 
 	cfg := s.service.Config()
@@ -159,7 +176,16 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 	backendCfg.Check = ""
 	s.service.Add(NewBackend(backendCfg))
 
+	// see if the config reflects the new backend
 	cfg = s.service.Config()
 	c.Assert(len(cfg.Backends), Equals, 1)
 	c.Assert(cfg.Backends[0].Check, Matches, "")
+
+	// Stopping the server should not take down the backend
+	// since there is no longer a Check address.
+	s.servers[0].Stop()
+	time.Sleep(1200 * time.Millisecond)
+
+	stats := s.service.Stats()
+	c.Assert(stats.Backends[0].Up, Equals, true)
 }
