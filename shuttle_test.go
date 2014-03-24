@@ -97,7 +97,7 @@ func checkResp(addr, expected string, c *C) {
 	}
 
 	resp := string(buff[:n])
-	c.Assert(resp, Matches, expected)
+	c.Assert(resp, Equals, expected)
 }
 
 func (s *BasicSuite) TestSingleBackend(c *C) {
@@ -138,6 +138,7 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 	checkResp(s.service.Addr, s.servers[2].addr, c)
 }
 
+// Test health check by taking down a server from a configured backend
 func (s *BasicSuite) TestFailedCheck(c *C) {
 	s.service.CheckInterval = 1
 	s.service.Fall = 1
@@ -168,6 +169,7 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 	}
 }
 
+// Update a backend in place
 func (s *BasicSuite) TestUpdateBackend(c *C) {
 	s.service.CheckInterval = 1
 	s.service.Fall = 1
@@ -176,7 +178,7 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 	cfg := s.service.Config()
 	backendCfg := cfg.Backends[0]
 
-	c.Assert(backendCfg.CheckAddr, Matches, backendCfg.Addr)
+	c.Assert(backendCfg.CheckAddr, Equals, backendCfg.Addr)
 
 	backendCfg.CheckAddr = ""
 	s.service.add(NewBackend(backendCfg))
@@ -184,7 +186,7 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 	// see if the config reflects the new backend
 	cfg = s.service.Config()
 	c.Assert(len(cfg.Backends), Equals, 1)
-	c.Assert(cfg.Backends[0].CheckAddr, Matches, "")
+	c.Assert(cfg.Backends[0].CheckAddr, Equals, "")
 
 	// Stopping the server should not take down the backend
 	// since there is no longer a Check address.
@@ -193,4 +195,75 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 
 	stats := s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
+}
+
+// Test removal of a single Backend from a service with multiple.
+func (s *BasicSuite) TestRemoveBackend(c *C) {
+	s.AddBackend(c)
+	s.AddBackend(c)
+
+	stats, err := Registry.ServiceStats("testService")
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	c.Assert(len(stats.Backends), Equals, 2)
+
+	backend1 := stats.Backends[0].Name
+
+	err = Registry.RemoveBackend("testService", backend1)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	stats, err = Registry.ServiceStats("testService")
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	c.Assert(len(stats.Backends), Equals, 1)
+
+	_, err = Registry.BackendStats("testService", backend1)
+	c.Assert(err, Equals, ErrNoBackend)
+}
+
+func (s *BasicSuite) TestUpdateService(c *C) {
+	svcCfg := ServiceConfig{
+		Name: "Update",
+		Addr: "127.0.0.1:9324",
+	}
+
+	if err := Registry.AddService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	svc := Registry.GetService("Update")
+	if svc == nil {
+		c.Fatal(ErrNoService)
+	}
+
+	svcCfg = ServiceConfig{
+		Name: "Update",
+		Addr: "127.0.0.1:9425",
+	}
+
+	// Make sure we can't add it through AddService
+	if err := Registry.AddService(svcCfg); err == nil {
+		c.Fatal(err)
+	}
+
+	// Now update the service
+	if err := Registry.UpdateService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	svc = Registry.GetService("Update")
+	if svc == nil {
+		c.Fatal(ErrNoService)
+	}
+	c.Assert(svc.Addr, Equals, "127.0.0.1:9425")
+
+	if err := Registry.RemoveService("Update"); err != nil {
+		c.Fatal(err)
+	}
 }

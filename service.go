@@ -240,7 +240,7 @@ func (s *Service) run() {
 		for {
 			conn, err := s.listener.Accept()
 			if err != nil {
-				if err := err.(*net.OpError); err.Temporary() {
+				if err, ok := err.(*net.OpError); ok && err.Temporary() {
 					continue
 				}
 				// we must be getting shut down
