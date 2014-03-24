@@ -19,7 +19,7 @@ type Service struct {
 	Addr          string
 	Backends      []*Backend
 	Balance       string
-	Inter         uint64
+	CheckInterval uint64
 	Fall          uint64
 	Rise          uint64
 	ClientTimeout time.Duration
@@ -46,7 +46,7 @@ type ServiceStat struct {
 	Addr          string        `json:"address"`
 	Backends      []BackendStat `json:"backends"`
 	Balance       string        `json:"balance"`
-	Inter         uint64        `json:"check_interval"`
+	CheckInterval uint64        `json:"check_interval"`
 	Fall          uint64        `json:"fall"`
 	Rise          uint64        `json:"rise"`
 	ClientTimeout uint64        `json:"client_timeout"`
@@ -63,7 +63,7 @@ type ServiceConfig struct {
 	Addr          string          `json:"address"`
 	Backends      []BackendConfig `json:"backends"`
 	Balance       string          `json:"balance"`
-	Inter         uint64          `json:"check_interval"`
+	CheckInterval uint64          `json:"check_interval"`
 	Fall          uint64          `json:"fall"`
 	Rise          uint64          `json:"rise"`
 	ClientTimeout uint64          `json:"client_timeout"`
@@ -76,7 +76,7 @@ func NewService(cfg ServiceConfig) *Service {
 	s := &Service{
 		Name:          cfg.Name,
 		Addr:          cfg.Addr,
-		Inter:         cfg.Inter,
+		CheckInterval: cfg.CheckInterval,
 		Fall:          cfg.Fall,
 		Rise:          cfg.Rise,
 		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Second,
@@ -84,8 +84,8 @@ func NewService(cfg ServiceConfig) *Service {
 		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Second,
 	}
 
-	if s.Inter == 0 {
-		s.Inter = 2
+	if s.CheckInterval == 0 {
+		s.CheckInterval = 2
 	}
 	if s.Rise == 0 {
 		s.Rise = 2
@@ -118,7 +118,7 @@ func (s *Service) Stats() ServiceStat {
 		Name:          s.Name,
 		Addr:          s.Addr,
 		Balance:       s.Balance,
-		Inter:         s.Inter,
+		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
 		ClientTimeout: uint64(s.ClientTimeout / time.Second),
@@ -144,7 +144,7 @@ func (s *Service) Config() ServiceConfig {
 		Name:          s.Name,
 		Addr:          s.Addr,
 		Balance:       s.Balance,
-		Inter:         s.Inter,
+		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
 		ClientTimeout: uint64(s.ClientTimeout / time.Second),
@@ -182,7 +182,7 @@ func (s *Service) add(backend *Backend) {
 	backend.Up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
-	backend.checkInterval = time.Duration(s.Inter) * time.Second
+	backend.checkInterval = time.Duration(s.CheckInterval) * time.Second
 
 	// replace an exiting backend if we have it.
 	for i, b := range s.Backends {

@@ -58,9 +58,9 @@ func (s *BasicSuite) AddBackend(c *C) {
 
 	name := fmt.Sprintf("backend_%d", next)
 	cfg := BackendConfig{
-		Name:  name,
-		Addr:  s.servers[next].addr,
-		Check: s.servers[next].addr,
+		Name:      name,
+		Addr:      s.servers[next].addr,
+		CheckAddr: s.servers[next].addr,
 	}
 
 	s.service.add(NewBackend(cfg))
@@ -139,7 +139,7 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 }
 
 func (s *BasicSuite) TestFailedCheck(c *C) {
-	s.service.Inter = 1
+	s.service.CheckInterval = 1
 	s.service.Fall = 1
 	s.AddBackend(c)
 
@@ -169,22 +169,22 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 }
 
 func (s *BasicSuite) TestUpdateBackend(c *C) {
-	s.service.Inter = 1
+	s.service.CheckInterval = 1
 	s.service.Fall = 1
 	s.AddBackend(c)
 
 	cfg := s.service.Config()
 	backendCfg := cfg.Backends[0]
 
-	c.Assert(backendCfg.Check, Matches, backendCfg.Addr)
+	c.Assert(backendCfg.CheckAddr, Matches, backendCfg.Addr)
 
-	backendCfg.Check = ""
+	backendCfg.CheckAddr = ""
 	s.service.add(NewBackend(backendCfg))
 
 	// see if the config reflects the new backend
 	cfg = s.service.Config()
 	c.Assert(len(cfg.Backends), Equals, 1)
-	c.Assert(cfg.Backends[0].Check, Matches, "")
+	c.Assert(cfg.Backends[0].CheckAddr, Matches, "")
 
 	// Stopping the server should not take down the backend
 	// since there is no longer a Check address.

@@ -11,16 +11,16 @@ import (
 
 type Backend struct {
 	sync.Mutex
-	Name   string
-	Addr   string
-	Check  string
-	Up     bool
-	Weight uint64
-	Sent   uint64
-	Rcvd   uint64
-	Errors uint64
-	Conns  int64
-	Active int64
+	Name      string
+	Addr      string
+	CheckAddr string
+	Up        bool
+	Weight    uint64
+	Sent      uint64
+	Rcvd      uint64
+	Errors    uint64
+	Conns     int64
+	Active    int64
 
 	// these are loaded from the service, se a backend doesn't need to acces
 	// the service struct at all.
@@ -39,31 +39,31 @@ type Backend struct {
 
 // The json stats we return for the backend
 type BackendStat struct {
-	Name   string `json:"name"`
-	Addr   string `json:"address"`
-	Check  string `json:"check_address"`
-	Up     bool   `json:"up"`
-	Weight uint64 `json:"weight"`
-	Sent   uint64 `json:"sent"`
-	Rcvd   uint64 `json:"received"`
-	Errors uint64 `json:"errors"`
-	Conns  int64  `json:"connections"`
-	Active int64  `json:"active"`
+	Name      string `json:"name"`
+	Addr      string `json:"address"`
+	CheckAddr string `json:"check_address"`
+	Up        bool   `json:"up"`
+	Weight    uint64 `json:"weight"`
+	Sent      uint64 `json:"sent"`
+	Rcvd      uint64 `json:"received"`
+	Errors    uint64 `json:"errors"`
+	Conns     int64  `json:"connections"`
+	Active    int64  `json:"active"`
 }
 
 // The subset of fields we load and serialize for config.
 type BackendConfig struct {
-	Name   string `json:"name"`
-	Addr   string `json:"address"`
-	Check  string `json:"check_address"`
-	Weight uint64 `json:"weight"`
+	Name      string `json:"name"`
+	Addr      string `json:"address"`
+	CheckAddr string `json:"check_address"`
+	Weight    uint64 `json:"weight"`
 }
 
 func NewBackend(cfg BackendConfig) *Backend {
 	b := &Backend{
 		Name:      cfg.Name,
 		Addr:      cfg.Addr,
-		Check:     cfg.Check,
+		CheckAddr: cfg.CheckAddr,
 		Weight:    cfg.Weight,
 		stopCheck: make(chan interface{}),
 	}
@@ -77,16 +77,16 @@ func (b *Backend) Stats() BackendStat {
 	defer b.Unlock()
 
 	stats := BackendStat{
-		Name:   b.Name,
-		Addr:   b.Addr,
-		Check:  b.Check,
-		Up:     b.Up,
-		Weight: b.Weight,
-		Sent:   b.Sent,
-		Rcvd:   b.Rcvd,
-		Errors: b.Errors,
-		Conns:  b.Conns,
-		Active: b.Active,
+		Name:      b.Name,
+		Addr:      b.Addr,
+		CheckAddr: b.CheckAddr,
+		Up:        b.Up,
+		Weight:    b.Weight,
+		Sent:      b.Sent,
+		Rcvd:      b.Rcvd,
+		Errors:    b.Errors,
+		Conns:     b.Conns,
+		Active:    b.Active,
 	}
 
 	return stats
@@ -98,10 +98,10 @@ func (b *Backend) Config() BackendConfig {
 	defer b.Unlock()
 
 	cfg := BackendConfig{
-		Name:   b.Name,
-		Addr:   b.Addr,
-		Check:  b.Check,
-		Weight: b.Weight,
+		Name:      b.Name,
+		Addr:      b.Addr,
+		CheckAddr: b.CheckAddr,
+		Weight:    b.Weight,
 	}
 
 	return cfg
@@ -121,12 +121,12 @@ func (b *Backend) Stop() {
 }
 
 func (b *Backend) check() {
-	if b.Check == "" {
+	if b.CheckAddr == "" {
 		return
 	}
 
 	up := true
-	if c, e := net.DialTimeout("tcp", b.Check, b.dialTimeout); e == nil {
+	if c, e := net.DialTimeout("tcp", b.CheckAddr, b.dialTimeout); e == nil {
 		c.Close()
 	} else {
 		up = false
