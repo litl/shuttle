@@ -29,8 +29,10 @@ type Backend struct {
 	checkInterval time.Duration
 	rise          uint64
 	riseCount     uint64
+	checkOK       int
 	fall          uint64
 	fallCount     uint64
+	checkFail     int
 
 	startCheck sync.Once
 	// stop the health-check loop
@@ -49,6 +51,8 @@ type BackendStat struct {
 	Errors    uint64 `json:"errors"`
 	Conns     int64  `json:"connections"`
 	Active    int64  `json:"active"`
+	CheckOK   int    `json:"check_success"`
+	CheckFail int    `json:"check_fail"`
 }
 
 // The subset of fields we load and serialize for config.
@@ -87,6 +91,8 @@ func (b *Backend) Stats() BackendStat {
 		Errors:    b.Errors,
 		Conns:     b.Conns,
 		Active:    b.Active,
+		CheckOK:   b.checkOK,
+		CheckFail: b.checkFail,
 	}
 
 	return stats
@@ -137,12 +143,14 @@ func (b *Backend) check() {
 	if up {
 		b.fallCount = 0
 		b.riseCount++
+		b.checkOK++
 		if b.riseCount >= b.rise {
 			b.Up = true
 		}
 	} else {
 		b.riseCount = 0
 		b.fallCount++
+		b.checkFail++
 		if b.fallCount >= b.fall {
 			b.Up = false
 		}
@@ -150,7 +158,6 @@ func (b *Backend) check() {
 }
 
 // Periodically check the status of this backend
-// TODO: ErrLim, Rise and Fall
 func (b *Backend) healthCheck() {
 	for {
 		select {

@@ -154,6 +154,7 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 
 	stats = s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, false)
+	c.Assert(stats.Backends[0].CheckFail, Equals, 1)
 
 	// now try and connect to the service
 	conn, err := net.Dial("tcp", s.service.Addr)
@@ -195,6 +196,8 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 
 	stats := s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
+	// should have been no check failures
+	c.Assert(stats.Backends[0].CheckFail, Equals, 0)
 }
 
 // Test removal of a single Backend from a service with multiple.
