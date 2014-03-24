@@ -116,6 +116,31 @@ func (s *BasicSuite) TestRoundRobin(c *C) {
 	checkResp(s.service.Addr, s.servers[1].addr, c)
 }
 
+func (s *BasicSuite) TestWeightedRoundRobin(c *C) {
+	s.AddBackend(c)
+	s.AddBackend(c)
+	s.AddBackend(c)
+
+	s.service.Backends[0].Weight = 1
+	s.service.Backends[1].Weight = 2
+	s.service.Backends[2].Weight = 3
+
+	// we already checked that we connect to the correct backends,
+	// so skip the tcp connection this time.
+
+	// one from the first server
+	c.Assert(s.service.next().Name, Equals, "backend_0")
+	// A weight of 2 should return twice
+	c.Assert(s.service.next().Name, Equals, "backend_1")
+	c.Assert(s.service.next().Name, Equals, "backend_1")
+	// And a weight of 3 should return thrice
+	c.Assert(s.service.next().Name, Equals, "backend_2")
+	c.Assert(s.service.next().Name, Equals, "backend_2")
+	c.Assert(s.service.next().Name, Equals, "backend_2")
+	// and once around or good measure
+	c.Assert(s.service.next().Name, Equals, "backend_0")
+}
+
 func (s *BasicSuite) TestLeastConn(c *C) {
 	// this assignment triggers race detection
 	s.service.next = s.service.leastConn

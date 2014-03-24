@@ -15,12 +15,13 @@ func (s *Service) roundRobin() *Backend {
 	// we may be out of range if we lost a backend since last connections
 	if s.lastBackend >= count {
 		s.lastBackend = 0
+		s.lastCount = 0
 	}
 
 	// if some of the backends are down, we need to cycle through them all
 	for i := 0; i < count; i++ {
 		backend := s.Backends[s.lastBackend]
-		if backend.Up && s.lastCount <= int(backend.Weight) {
+		if backend.Up && s.lastCount < int(backend.Weight) {
 			s.lastCount++
 			return s.Backends[s.lastBackend]
 		}

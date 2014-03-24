@@ -184,7 +184,7 @@ func (s *Service) add(backend *Backend) {
 	backend.dialTimeout = s.DialTimeout
 	backend.checkInterval = time.Duration(s.CheckInterval) * time.Second
 
-	// replace an exiting backend if we have it.
+	// replace an existing backend if we have it.
 	for i, b := range s.Backends {
 		if b.Name == backend.Name {
 			b.Stop()
@@ -195,6 +195,7 @@ func (s *Service) add(backend *Backend) {
 	}
 
 	s.Backends = append(s.Backends, backend)
+
 	backend.Start()
 }
 

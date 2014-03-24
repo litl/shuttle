@@ -71,6 +71,12 @@ func NewBackend(cfg BackendConfig) *Backend {
 		Weight:    cfg.Weight,
 		stopCheck: make(chan interface{}),
 	}
+
+	// don't want a weight of 0
+	if b.Weight == 0 {
+		b.Weight = 1
+	}
+
 	return b
 }
 
@@ -115,7 +121,7 @@ func (b *Backend) Config() BackendConfig {
 
 // Backends and Servers Stringify themselves directly into their config format.
 func (b *Backend) String() string {
-	return string(marshal(b.Config))
+	return string(marshal(b.Config()))
 }
 
 func (b *Backend) Start() {
