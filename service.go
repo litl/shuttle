@@ -20,7 +20,6 @@ type Service struct {
 	Backends      []*Backend
 	Balance       string
 	Inter         uint64
-	ErrLim        uint64
 	Fall          uint64
 	Rise          uint64
 	ClientTimeout time.Duration
@@ -48,7 +47,6 @@ type ServiceStat struct {
 	Backends      []BackendStat `json:"backends"`
 	Balance       string        `json:"balance"`
 	Inter         uint64        `json:"check_interval"`
-	ErrLim        uint64        `json:"error_limit"`
 	Fall          uint64        `json:"fall"`
 	Rise          uint64        `json:"rise"`
 	ClientTimeout uint64        `json:"client_timeout"`
@@ -66,7 +64,6 @@ type ServiceConfig struct {
 	Backends      []BackendConfig `json:"backends"`
 	Balance       string          `json:"balance"`
 	Inter         uint64          `json:"check_interval"`
-	ErrLim        uint64          `json:"error_limit"`
 	Fall          uint64          `json:"fall"`
 	Rise          uint64          `json:"rise"`
 	ClientTimeout uint64          `json:"client_timeout"`
@@ -80,7 +77,6 @@ func NewService(cfg ServiceConfig) *Service {
 		Name:          cfg.Name,
 		Addr:          cfg.Addr,
 		Inter:         cfg.Inter,
-		ErrLim:        cfg.ErrLim,
 		Fall:          cfg.Fall,
 		Rise:          cfg.Rise,
 		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Second,
@@ -123,7 +119,6 @@ func (s *Service) Stats() ServiceStat {
 		Addr:          s.Addr,
 		Balance:       s.Balance,
 		Inter:         s.Inter,
-		ErrLim:        s.ErrLim,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
 		ClientTimeout: uint64(s.ClientTimeout / time.Second),
@@ -150,7 +145,6 @@ func (s *Service) Config() ServiceConfig {
 		Addr:          s.Addr,
 		Balance:       s.Balance,
 		Inter:         s.Inter,
-		ErrLim:        s.ErrLim,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
 		ClientTimeout: uint64(s.ClientTimeout / time.Second),

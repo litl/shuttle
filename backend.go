@@ -27,7 +27,6 @@ type Backend struct {
 	dialTimeout   time.Duration
 	rwTimeout     time.Duration
 	checkInterval time.Duration
-	errLim        uint64
 	rise          uint64
 	riseCount     uint64
 	fall          uint64

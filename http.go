@@ -139,5 +139,7 @@ func startHTTPServer() {
 	r.HandleFunc("/{service}/{backend}", postBackend).Methods("PUT", "POST")
 	r.HandleFunc("/{service}/{backend}", deleteBackend).Methods("DELETE")
 	http.Handle("/", r)
+
+	log.Println("shuttle listening on", listenAddr)
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
