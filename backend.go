@@ -33,6 +33,7 @@ type Backend struct {
 	fall          uint64
 	fallCount     uint64
 
+	startCheck sync.Once
 	// stop the health-check loop
 	stopCheck chan interface{}
 }
@@ -113,7 +114,7 @@ func (b *Backend) String() string {
 }
 
 func (b *Backend) Start() {
-	go b.healthCheck()
+	go b.startCheck.Do(b.healthCheck)
 }
 
 func (b *Backend) Stop() {

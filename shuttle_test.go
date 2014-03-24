@@ -50,7 +50,7 @@ func (s *BasicSuite) SetUpTest(c *C) {
 }
 
 // Add a default backend for the next server we have running
-func (s *BasicSuite) AddBackend(check bool, c *C) {
+func (s *BasicSuite) AddBackend(c *C) {
 	next := len(s.service.Backends)
 	if next >= len(s.servers) {
 		c.Fatal("no more servers")
@@ -58,12 +58,9 @@ func (s *BasicSuite) AddBackend(check bool, c *C) {
 
 	name := fmt.Sprintf("backend_%d", next)
 	cfg := BackendConfig{
-		Name: name,
-		Addr: s.servers[next].addr,
-	}
-
-	if check {
-		cfg.Check = cfg.Addr
+		Name:  name,
+		Addr:  s.servers[next].addr,
+		Check: s.servers[next].addr,
 	}
 
 	s.service.add(NewBackend(cfg))
@@ -104,14 +101,14 @@ func checkResp(addr, expected string, c *C) {
 }
 
 func (s *BasicSuite) TestSingleBackend(c *C) {
-	s.AddBackend(false, c)
+	s.AddBackend(c)
 
 	checkResp(s.service.Addr, s.servers[0].addr, c)
 }
 
 func (s *BasicSuite) TestRoundRobin(c *C) {
-	s.AddBackend(false, c)
-	s.AddBackend(false, c)
+	s.AddBackend(c)
+	s.AddBackend(c)
 
 	checkResp(s.service.Addr, s.servers[0].addr, c)
 	checkResp(s.service.Addr, s.servers[1].addr, c)
@@ -123,8 +120,8 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 	// this assignment triggers race detection
 	s.service.next = s.service.leastConn
 
-	s.AddBackend(false, c)
-	s.AddBackend(false, c)
+	s.AddBackend(c)
+	s.AddBackend(c)
 
 	// tie up 4 connections to the backends
 	for i := 0; i < 4; i++ {
@@ -135,7 +132,7 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 		defer conn.Close()
 	}
 
-	s.AddBackend(false, c)
+	s.AddBackend(c)
 
 	checkResp(s.service.Addr, s.servers[2].addr, c)
 	checkResp(s.service.Addr, s.servers[2].addr, c)
@@ -144,7 +141,7 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 func (s *BasicSuite) TestFailedCheck(c *C) {
 	s.service.Inter = 1
 	s.service.Fall = 1
-	s.AddBackend(true, c)
+	s.AddBackend(c)
 
 	stats := s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
@@ -174,7 +171,7 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 func (s *BasicSuite) TestUpdateBackend(c *C) {
 	s.service.Inter = 1
 	s.service.Fall = 1
-	s.AddBackend(true, c)
+	s.AddBackend(c)
 
 	cfg := s.service.Config()
 	backendCfg := cfg.Backends[0]
