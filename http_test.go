@@ -4,18 +4,25 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 
 	. "launchpad.net/gocheck"
 )
 
 type HTTPSuite struct {
 	servers []*testServer
+	httpSvr *httptest.Server
 }
 
 var _ = Suite(&HTTPSuite{})
 
 func (s *HTTPSuite) SetUpSuite(c *C) {
-	go startHTTPServer()
+	addHandlers()
+	s.httpSvr = httptest.NewServer(nil)
+}
+
+func (s *HTTPSuite) TearDownSuite(c *C) {
+	s.httpSvr.Close()
 }
 
 func (s *HTTPSuite) SetUpTest(c *C) {
@@ -44,7 +51,7 @@ func (s *HTTPSuite) TearDownTest(c *C) {
 // These don't yet *really* test anything other than code coverage
 func (s *HTTPSuite) TestAddService(c *C) {
 	svcDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9000"}`))
-	req, _ := http.NewRequest("PUT", "http://"+listenAddr+"/testService", svcDef)
+	req, _ := http.NewRequest("PUT", s.httpSvr.URL+"/testService", svcDef)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Fatal(err)
@@ -57,14 +64,14 @@ func (s *HTTPSuite) TestAddService(c *C) {
 
 func (s *HTTPSuite) TestAddBackend(c *C) {
 	svcDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9000"}`))
-	req, _ := http.NewRequest("PUT", "http://"+listenAddr+"/testService", svcDef)
+	req, _ := http.NewRequest("PUT", s.httpSvr.URL+"/testService", svcDef)
 	_, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Fatal(err)
 	}
 
 	backendDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9001"}`))
-	req, _ = http.NewRequest("PUT", "http://"+listenAddr+"/testService/testBackend", backendDef)
+	req, _ = http.NewRequest("PUT", s.httpSvr.URL+"/testService/testBackend", backendDef)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Fatal(err)

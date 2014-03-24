@@ -128,7 +128,7 @@ func deleteBackend(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshal(Registry.Config()))
 }
 
-func startHTTPServer() {
+func addHandlers() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", getStats).Methods("GET")
 	r.HandleFunc("/config", getConfig).Methods("GET")
@@ -139,7 +139,10 @@ func startHTTPServer() {
 	r.HandleFunc("/{service}/{backend}", postBackend).Methods("PUT", "POST")
 	r.HandleFunc("/{service}/{backend}", deleteBackend).Methods("DELETE")
 	http.Handle("/", r)
+}
 
+func startHTTPServer() {
+	addHandlers()
 	log.Println("shuttle listening on", listenAddr)
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
