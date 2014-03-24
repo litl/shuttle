@@ -11,7 +11,7 @@ var (
 	// The default config is loaded if this file does not exist.
 	stateConfig string
 
-	// Listen address for the http server
+	// Listen address for the http server.
 	listenAddr string
 )
 

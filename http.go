@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -144,5 +147,27 @@ func addHandlers() {
 func startHTTPServer() {
 	addHandlers()
 	log.Println("shuttle listening on", listenAddr)
-	log.Fatal(http.ListenAndServe(listenAddr, nil))
+
+	netw := "tcp"
+
+	if strings.HasPrefix(listenAddr, "unix:") {
+		listenAddr = listenAddr[len("unix:"):]
+		netw = "unix"
+
+		// remove our old socket if we left it lying around
+		if stats, err := os.Stat(listenAddr); err == nil {
+			if stats.Mode()&os.ModeSocket != 0 {
+				os.Remove(listenAddr)
+			}
+		}
+
+		defer os.Remove(listenAddr)
+	}
+
+	listener, err := net.Listen(netw, listenAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.Serve(listener, nil)
 }
