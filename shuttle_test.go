@@ -72,6 +72,9 @@ func (s *BasicSuite) TearDownTest(c *C) {
 		s.Stop()
 	}
 
+	// get rid of the servers refs too!
+	s.servers = nil
+
 	err := Registry.RemoveService(s.service.Name)
 	if err != nil {
 		c.Fatalf("could not remove service '%s': %s", s.service.Name, err)
