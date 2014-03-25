@@ -4,7 +4,7 @@ shuttle TCP Proxy
 Shuttle is a TCP proxy and load balancer, which can be updated live via an HTTP
 interface.
 
-## Usage (not fully implemented)
+## Usage
 Shuttle can be started with a default configuration, as well as its last
 configuration state. The state configuration is updated on changes to the
 internal config. If the state config file doesn't exist, the default is loaded.
@@ -27,5 +27,3 @@ separately.
 A GET request to a backend at `/service_name/backend_name` will return the
 current stats for just that backend. Issuing a PUT with a json config to the
 backend's endpoint will create or update that backend.
-
-

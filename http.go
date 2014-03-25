@@ -53,9 +53,11 @@ func postService(w http.ResponseWriter, r *http.Request) {
 
 	if e := Registry.AddService(svcCfg); e != nil {
 		// we can probably distinguish between 4xx and 5xx errors here at some point.
-		log.Println(err)
-		http.Error(w, e.Error(), http.StatusInternalServerError)
-		return
+		log.Printf("service %s exists, updating", svcCfg.Name)
+		if e := Registry.UpdateService(svcCfg); e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	go writeStateConfig()
