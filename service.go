@@ -79,9 +79,9 @@ func NewService(cfg ServiceConfig) *Service {
 		CheckInterval: cfg.CheckInterval,
 		Fall:          cfg.Fall,
 		Rise:          cfg.Rise,
-		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Second,
-		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Second,
-		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Second,
+		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Millisecond,
+		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Millisecond,
+		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Millisecond,
 	}
 
 	if s.CheckInterval == 0 {
@@ -121,9 +121,9 @@ func (s *Service) Stats() ServiceStat {
 		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Second),
-		ServerTimeout: uint64(s.ServerTimeout / time.Second),
-		DialTimeout:   uint64(s.DialTimeout / time.Second),
+		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
 	}
 
 	for _, b := range s.Backends {
@@ -147,9 +147,9 @@ func (s *Service) Config() ServiceConfig {
 		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Second),
-		ServerTimeout: uint64(s.ServerTimeout / time.Second),
-		DialTimeout:   uint64(s.DialTimeout / time.Second),
+		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
 	}
 	for _, b := range s.Backends {
 		config.Backends = append(config.Backends, b.Config())
@@ -182,7 +182,7 @@ func (s *Service) add(backend *Backend) {
 	backend.Up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
-	backend.checkInterval = time.Duration(s.CheckInterval) * time.Second
+	backend.checkInterval = time.Duration(s.CheckInterval) * time.Millisecond
 
 	// replace an existing backend if we have it.
 	for i, b := range s.Backends {
@@ -269,6 +269,11 @@ func (s *Service) stop() {
 
 	for _, backend := range s.Backends {
 		backend.Stop()
+	}
+
+	// the service may have been bad, and the listener failed
+	if s.listener == nil {
+		return
 	}
 
 	err := s.listener.Close()

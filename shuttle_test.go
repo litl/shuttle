@@ -196,7 +196,7 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 
 // Test health check by taking down a server from a configured backend
 func (s *BasicSuite) TestFailedCheck(c *C) {
-	s.service.CheckInterval = 1
+	s.service.CheckInterval = 500
 	s.service.Fall = 1
 	s.AddBackend(c)
 
@@ -206,7 +206,7 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 	// Stop the server, and see if the backend shows Down after our check
 	// interval.
 	s.servers[0].Stop()
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(800 * time.Millisecond)
 
 	stats = s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, false)
@@ -228,7 +228,7 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 
 // Update a backend in place
 func (s *BasicSuite) TestUpdateBackend(c *C) {
-	s.service.CheckInterval = 1
+	s.service.CheckInterval = 500
 	s.service.Fall = 1
 	s.AddBackend(c)
 
@@ -248,7 +248,7 @@ func (s *BasicSuite) TestUpdateBackend(c *C) {
 	// Stopping the server should not take down the backend
 	// since there is no longer a Check address.
 	s.servers[0].Stop()
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(800 * time.Millisecond)
 
 	stats := s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
