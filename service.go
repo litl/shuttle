@@ -55,6 +55,8 @@ type ServiceStat struct {
 	Sent          uint64        `json:"sent"`
 	Rcvd          uint64        `json:"received"`
 	Errors        uint64        `json:"errors"`
+	Conns         int64         `json:"connections"`
+	Active        int64         `json:"active"`
 }
 
 // Subset of service fields needed for configuration.
@@ -131,6 +133,8 @@ func (s *Service) Stats() ServiceStat {
 		stats.Sent += b.Sent
 		stats.Rcvd += b.Rcvd
 		stats.Errors += b.Errors
+		stats.Conns += b.Conns
+		stats.Active += b.Active
 	}
 
 	return stats
