@@ -150,8 +150,7 @@ func startHTTPServer() {
 
 	netw := "tcp"
 
-	if strings.HasPrefix(listenAddr, "unix:") {
-		listenAddr = listenAddr[len("unix:"):]
+	if strings.HasPrefix(listenAddr, "/") {
 		netw = "unix"
 
 		// remove our old socket if we left it lying around
