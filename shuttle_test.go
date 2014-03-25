@@ -40,7 +40,7 @@ var _ = Suite(&BasicSuite{})
 // needed.
 func mySetup(s *BasicSuite, t Tester) {
 	// start 4 possible backend servers
-	ports := []string{"9001", "9002", "9003", "9004"}
+	ports := []string{"2001", "2002", "2003", "2004"}
 	for _, p := range ports {
 		server, err := NewTestServer("127.0.0.1:"+p, t)
 		if err != nil {
@@ -51,7 +51,7 @@ func mySetup(s *BasicSuite, t Tester) {
 
 	svcCfg := ServiceConfig{
 		Name: "testService",
-		Addr: "127.0.0.1:9999",
+		Addr: "127.0.0.1:2222",
 	}
 
 	if err := Registry.AddService(svcCfg); err != nil {
@@ -368,88 +368,4 @@ func (s *BasicSuite) TestParallel(c *C) {
 	}
 
 	wg.Wait()
-}
-
-// WARNING, these benchmarks still have trouble binding addresses.
-// Run them individually for now.
-
-// Look for regressions in the connection and small request time using
-// RoundRobin balancing.
-func BenchmarkRoundRobin(b *testing.B) {
-	s := &BasicSuite{}
-	mySetup(s, b)
-	defer myTearDown(s, b)
-	for i := 0; i < 4; i++ {
-		s.AddBackend(b)
-	}
-
-	cons := make([]net.Conn, 4)
-
-	var err error
-	for i := range cons {
-		cons[i], err = net.Dial("tcp", s.service.Addr)
-		if err != nil {
-			b.Fatal(err)
-		}
-		defer cons[i].Close()
-	}
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		readBuff := make([]byte, 1024)
-		for _, c := range cons {
-			if _, err := io.WriteString(c, "testing!\n"); err != nil {
-				b.Fatal(err)
-			}
-		}
-		for _, c := range cons {
-			_, err := c.Read(readBuff)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	}
-}
-
-// Same as BenchmarkRoundRobin, but with LeastConn balancing
-func BenchmarkLeastConn(b *testing.B) {
-	s := &BasicSuite{}
-	mySetup(s, b)
-	defer myTearDown(s, b)
-
-	// this assignment triggers race detection
-	s.service.next = s.service.leastConn
-
-	for i := 0; i < 4; i++ {
-		s.AddBackend(b)
-	}
-
-	cons := make([]net.Conn, 4)
-
-	var err error
-	for i := range cons {
-		cons[i], err = net.Dial("tcp", s.service.Addr)
-		if err != nil {
-			b.Fatal(err)
-		}
-		defer cons[i].Close()
-	}
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		readBuff := make([]byte, 1024)
-		for _, c := range cons {
-			if _, err := io.WriteString(c, "testing!\n"); err != nil {
-				b.Fatal(err)
-			}
-		}
-		for _, c := range cons {
-			_, err := c.Read(readBuff)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	}
 }
