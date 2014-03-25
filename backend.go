@@ -221,16 +221,10 @@ func (b *Backend) Proxy(conn net.Conn) {
 	var waitFor chan bool
 	select {
 	case <-clientClosed:
-		if err := bConn.Conn.(*net.TCPConn).CloseRead(); err != nil {
-			atomic.AddUint64(errorCount, 1)
-			log.Printf("proxy error: %s", err)
-		}
+		bConn.Conn.(*net.TCPConn).CloseRead()
 		waitFor = backendClosed
 	case <-backendClosed:
-		if err := bConn.Conn.(*net.TCPConn).CloseRead(); err != nil {
-			atomic.AddUint64(errorCount, 1)
-			log.Printf("proxy error: %s", err)
-		}
+		bConn.Conn.(*net.TCPConn).CloseRead()
 		waitFor = clientClosed
 	}
 	// wait for the other connection to close

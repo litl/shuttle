@@ -8,8 +8,12 @@ func (s *Service) roundRobin() *Backend {
 	defer s.Unlock()
 
 	count := len(s.Backends)
-	if count == 0 {
+	switch count {
+	case 0:
 		return nil
+	case 1:
+		// fast track for the single backend case
+		return s.Backends[0]
 	}
 
 	// we may be out of range if we lost a backend since last connections
@@ -38,8 +42,12 @@ func (s *Service) leastConn() *Backend {
 	defer s.Unlock()
 
 	count := uint64(len(s.Backends))
-	if count == 0 {
+	switch count {
+	case 0:
 		return nil
+	case 1:
+		// fast track for the single backend case
+		return s.Backends[0]
 	}
 
 	// return the backend with the least connections, favoring the newer backends.
