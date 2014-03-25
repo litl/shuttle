@@ -14,7 +14,7 @@ type Backend struct {
 	Name      string
 	Addr      string
 	CheckAddr string
-	Up        bool
+	up        bool
 	Weight    uint64
 	Sent      uint64
 	Rcvd      uint64
@@ -90,7 +90,7 @@ func (b *Backend) Stats() BackendStat {
 		Name:      b.Name,
 		Addr:      b.Addr,
 		CheckAddr: b.CheckAddr,
-		Up:        b.Up,
+		Up:        b.up,
 		Weight:    b.Weight,
 		Sent:      b.Sent,
 		Rcvd:      b.Rcvd,
@@ -102,6 +102,13 @@ func (b *Backend) Stats() BackendStat {
 	}
 
 	return stats
+}
+
+func (b *Backend) Up() bool {
+	b.Lock()
+	up := b.up
+	b.Unlock()
+	return up
 }
 
 // Return the struct for marshaling into a json config
@@ -151,25 +158,27 @@ func (b *Backend) check() {
 		b.riseCount++
 		b.checkOK++
 		if b.riseCount >= b.rise {
-			b.Up = true
+			b.up = true
 		}
 	} else {
 		b.riseCount = 0
 		b.fallCount++
 		b.checkFail++
 		if b.fallCount >= b.fall {
-			b.Up = false
+			b.up = false
 		}
 	}
 }
 
 // Periodically check the status of this backend
 func (b *Backend) healthCheck() {
+	t := time.NewTimer(b.checkInterval)
 	for {
 		select {
 		case <-b.stopCheck:
+			t.Stop()
 			return
-		case <-time.After(b.checkInterval):
+		case <-t.C:
 			b.check()
 		}
 	}

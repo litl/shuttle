@@ -25,7 +25,7 @@ func (s *Service) roundRobin() *Backend {
 	// if some of the backends are down, we need to cycle through them all
 	for i := 0; i < count; i++ {
 		backend := s.Backends[s.lastBackend]
-		if backend.Up && s.lastCount < int(backend.Weight) {
+		if backend.Up() && s.lastCount < int(backend.Weight) {
 			s.lastCount++
 			return s.Backends[s.lastBackend]
 		}
@@ -54,7 +54,7 @@ func (s *Service) leastConn() *Backend {
 	least := int64(65536)
 	var backend *Backend
 	for i, b := range s.Backends {
-		if b.Up && b.Active <= least {
+		if b.Up() && b.Active <= least {
 			least = b.Active
 			backend = b
 			// keep track of this just in case

@@ -183,7 +183,7 @@ func (s *Service) add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
-	backend.Up = true
+	backend.up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
 	backend.checkInterval = time.Duration(s.CheckInterval) * time.Millisecond
