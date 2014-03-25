@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -85,7 +86,9 @@ func (s *BasicSuite) TearDownTest(c *C) {
 
 // Add a default backend for the next server we have running
 func (s *BasicSuite) AddBackend(c Tester) {
-	next := len(s.service.Backends)
+	// get the backends via Config to use the Service's locking.
+	svcCfg := s.service.Config()
+	next := len(svcCfg.Backends)
 	if next >= len(s.servers) {
 		c.Fatal("no more servers")
 	}
@@ -119,6 +122,10 @@ func checkResp(addr, expected string, c Tester) {
 	}
 
 	resp := string(buff[:n])
+	if resp == "" {
+		c.Fatal("No response")
+	}
+
 	if expected != "" && resp != expected {
 		c.Fatal("Expected", expected, ", got", resp)
 	}
@@ -318,6 +325,49 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 	if err := Registry.RemoveService("Update"); err != nil {
 		c.Fatal(err)
 	}
+}
+
+// Add backends and run response tests in parallel
+func (s *BasicSuite) TestParallel(c *C) {
+	var wg sync.WaitGroup
+
+	client := func(i int) {
+		s.AddBackend(c)
+		// do a bunch of new connections in unison
+		for i := 0; i < 100; i++ {
+			checkResp(s.service.Addr, "", c)
+		}
+
+		conn, err := net.Dial("tcp", s.service.Addr)
+		if err != nil {
+			// we should still get an initial connection
+			c.Fatal(err)
+		}
+		defer conn.Close()
+
+		// now do some more continuous ping-pongs with the server
+		buff := make([]byte, 1024)
+
+		for i := 0; i < 1000; i++ {
+			n, err := io.WriteString(conn, "Testing testing\n")
+			if err != nil || n == 0 {
+				c.Fatal("couldn't write:", err)
+			}
+
+			n, err = conn.Read(buff)
+			if err != nil || n == 0 {
+				c.Fatal("no response:", err)
+			}
+		}
+		wg.Done()
+	}
+
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go client(i)
+	}
+
+	wg.Wait()
 }
 
 // WARNING, these benchmarks still have trouble binding addresses.
