@@ -13,8 +13,17 @@ import (
 )
 
 func init() {
-	// log.SetFlags(log.LstdFlags | log.Lshortfile)
+	//log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(ioutil.Discard)
+}
+
+// something that can wrap a gocheck.C testing.T or testing.B
+// Just add more methods as we need them.
+type Tester interface {
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+	Log(args ...interface{})
+	Logf(format string, args ...interface{})
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -26,13 +35,15 @@ type BasicSuite struct {
 
 var _ = Suite(&BasicSuite{})
 
-func (s *BasicSuite) SetUpTest(c *C) {
+// Make Setup and TearDown more generic, so we can bypass the gocheck Suite if
+// needed.
+func mySetup(s *BasicSuite, t Tester) {
 	// start 4 possible backend servers
 	ports := []string{"9001", "9002", "9003", "9004"}
 	for _, p := range ports {
-		server, err := NewTestServer("127.0.0.1:"+p, c)
+		server, err := NewTestServer("127.0.0.1:"+p, t)
 		if err != nil {
-			c.Fatal(err)
+			t.Fatal(err)
 		}
 		s.servers = append(s.servers, server)
 	}
@@ -43,14 +54,37 @@ func (s *BasicSuite) SetUpTest(c *C) {
 	}
 
 	if err := Registry.AddService(svcCfg); err != nil {
-		c.Fatal(err)
+		t.Fatal(err)
 	}
 
 	s.service = Registry.GetService(svcCfg.Name)
 }
 
+// shutdown our backend servers
+func myTearDown(s *BasicSuite, t Tester) {
+	for _, s := range s.servers {
+		s.Stop()
+	}
+
+	// get rid of the servers refs too!
+	s.servers = nil
+
+	err := Registry.RemoveService(s.service.Name)
+	if err != nil {
+		t.Fatalf("could not remove service '%s': %s", s.service.Name, err)
+	}
+}
+
+func (s *BasicSuite) SetUpTest(c *C) {
+	mySetup(s, c)
+}
+
+func (s *BasicSuite) TearDownTest(c *C) {
+	myTearDown(s, c)
+}
+
 // Add a default backend for the next server we have running
-func (s *BasicSuite) AddBackend(c *C) {
+func (s *BasicSuite) AddBackend(c Tester) {
 	next := len(s.service.Backends)
 	if next >= len(s.servers) {
 		c.Fatal("no more servers")
@@ -66,23 +100,8 @@ func (s *BasicSuite) AddBackend(c *C) {
 	s.service.add(NewBackend(cfg))
 }
 
-// shutdown our backend servers
-func (s *BasicSuite) TearDownTest(c *C) {
-	for _, s := range s.servers {
-		s.Stop()
-	}
-
-	// get rid of the servers refs too!
-	s.servers = nil
-
-	err := Registry.RemoveService(s.service.Name)
-	if err != nil {
-		c.Fatalf("could not remove service '%s': %s", s.service.Name, err)
-	}
-}
-
 // Connect to address, and check response after write.
-func checkResp(addr, expected string, c *C) {
+func checkResp(addr, expected string, c Tester) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		c.Fatal(err)
@@ -100,7 +119,9 @@ func checkResp(addr, expected string, c *C) {
 	}
 
 	resp := string(buff[:n])
-	c.Assert(resp, Equals, expected)
+	if expected != "" && resp != expected {
+		c.Fatal("Expected", expected, ", got", resp)
+	}
 }
 
 func (s *BasicSuite) TestSingleBackend(c *C) {
@@ -296,5 +317,89 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 
 	if err := Registry.RemoveService("Update"); err != nil {
 		c.Fatal(err)
+	}
+}
+
+// WARNING, these benchmarks still have trouble binding addresses.
+// Run them individually for now.
+
+// Look for regressions in the connection and small request time using
+// RoundRobin balancing.
+func BenchmarkRoundRobin(b *testing.B) {
+	s := &BasicSuite{}
+	mySetup(s, b)
+	defer myTearDown(s, b)
+	for i := 0; i < 4; i++ {
+		s.AddBackend(b)
+	}
+
+	cons := make([]net.Conn, 4)
+
+	var err error
+	for i := range cons {
+		cons[i], err = net.Dial("tcp", s.service.Addr)
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer cons[i].Close()
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		readBuff := make([]byte, 1024)
+		for _, c := range cons {
+			if _, err := io.WriteString(c, "testing!\n"); err != nil {
+				b.Fatal(err)
+			}
+		}
+		for _, c := range cons {
+			_, err := c.Read(readBuff)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+// Same as BenchmarkRoundRobin, but with LeastConn balancing
+func BenchmarkLeastConn(b *testing.B) {
+	s := &BasicSuite{}
+	mySetup(s, b)
+	defer myTearDown(s, b)
+
+	// this assignment triggers race detection
+	s.service.next = s.service.leastConn
+
+	for i := 0; i < 4; i++ {
+		s.AddBackend(b)
+	}
+
+	cons := make([]net.Conn, 4)
+
+	var err error
+	for i := range cons {
+		cons[i], err = net.Dial("tcp", s.service.Addr)
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer cons[i].Close()
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		readBuff := make([]byte, 1024)
+		for _, c := range cons {
+			if _, err := io.WriteString(c, "testing!\n"); err != nil {
+				b.Fatal(err)
+			}
+		}
+		for _, c := range cons {
+			_, err := c.Read(readBuff)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
 	}
 }

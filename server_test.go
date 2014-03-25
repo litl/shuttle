@@ -3,8 +3,6 @@ package main
 import (
 	"io"
 	"net"
-
-	. "launchpad.net/gocheck"
 )
 
 type testServer struct {
@@ -14,7 +12,7 @@ type testServer struct {
 }
 
 // Start a tcp server which responds with it's addr after every read.
-func NewTestServer(addr string, c *C) (*testServer, error) {
+func NewTestServer(addr string, c Tester) (*testServer, error) {
 	s := &testServer{
 		addr: addr,
 	}
