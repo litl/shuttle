@@ -206,8 +206,10 @@ func (b *Backend) Proxy(conn net.Conn) {
 		atomic.AddUint64(errorCount, 1)
 		return
 	}
+
+	// TODO: might not be TCP?
 	bConn := &timeoutConn{
-		Conn:      c,
+		TCPConn:   c.(*net.TCPConn),
 		rwTimeout: b.rwTimeout,
 	}
 
@@ -230,10 +232,10 @@ func (b *Backend) Proxy(conn net.Conn) {
 	var waitFor chan bool
 	select {
 	case <-clientClosed:
-		bConn.Conn.(*net.TCPConn).CloseRead()
+		bConn.TCPConn.CloseRead()
 		waitFor = backendClosed
 	case <-backendClosed:
-		bConn.Conn.(*net.TCPConn).CloseRead()
+		bConn.TCPConn.CloseRead()
 		waitFor = clientClosed
 	}
 	// wait for the other connection to close
@@ -258,12 +260,6 @@ func broker(dst, src net.Conn, srcClosed chan bool, written, errors *uint64) {
 	srcClosed <- true
 }
 
-// A net.Listener that provides a read/write timeout
-type timeoutListener struct {
-	net.Listener
-	rwTimeout time.Duration
-}
-
 type countingWriter struct {
 	io.Writer
 	count *uint64
@@ -278,44 +274,38 @@ func (w *countingWriter) Write(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (l *timeoutListener) Accept() (net.Conn, error) {
-	c, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	tc := &timeoutConn{
-		Conn:      c,
-		rwTimeout: l.rwTimeout,
-	}
-	return tc, nil
-}
-
 // A net.Conn that sets a deadline for every read or write operation.
 // This will allow the server to close connections that are broken at the
 // network level.
 type timeoutConn struct {
-	net.Conn
+	*net.TCPConn
 	rwTimeout time.Duration
 }
 
 func (c *timeoutConn) Read(b []byte) (int, error) {
 	if c.rwTimeout > 0 {
-		err := c.Conn.SetReadDeadline(time.Now().Add(c.rwTimeout))
+		err := c.TCPConn.SetReadDeadline(time.Now().Add(c.rwTimeout))
 		if err != nil {
 			return 0, err
 		}
 	}
-	return c.Conn.Read(b)
+	return c.TCPConn.Read(b)
 }
 
 func (c *timeoutConn) Write(b []byte) (int, error) {
 	if c.rwTimeout > 0 {
-		err := c.Conn.SetWriteDeadline(time.Now().Add(c.rwTimeout))
+		err := c.TCPConn.SetWriteDeadline(time.Now().Add(c.rwTimeout))
 		if err != nil {
 			return 0, err
 		}
 	}
-	return c.Conn.Write(b)
+	return c.TCPConn.Write(b)
+}
+
+// A net.Listener that provides a read/write timeout
+type timeoutListener struct {
+	net.Listener
+	rwTimeout time.Duration
 }
 
 func newTimeoutListener(addr string, timeout time.Duration) (net.Listener, error) {
@@ -329,4 +319,20 @@ func newTimeoutListener(addr string, timeout time.Duration) (net.Listener, error
 		rwTimeout: timeout,
 	}
 	return tl, nil
+}
+func (l *timeoutListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	c, ok := conn.(*net.TCPConn)
+	if ok {
+		tc := &timeoutConn{
+			TCPConn:   c,
+			rwTimeout: l.rwTimeout,
+		}
+		return tc, nil
+	}
+	return conn, nil
 }
