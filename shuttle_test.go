@@ -172,9 +172,19 @@ func (s *BasicSuite) TestWeightedRoundRobin(c *C) {
 	c.Assert(s.service.next().Name, Equals, "backend_0")
 }
 
-func (s *BasicSuite) XTestLeastConn(c *C) {
-	// this assignment triggers race detection
-	s.service.next = s.service.leastConn
+func (s *BasicSuite) TestLeastConn(c *C) {
+	// replace out default service with one using LeastConn balancing
+	Registry.RemoveService("testService")
+	svcCfg := ServiceConfig{
+		Name:    "testService",
+		Addr:    "127.0.0.1:2223",
+		Balance: "LC",
+	}
+
+	if err := Registry.AddService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+	s.service = Registry.GetService("testService")
 
 	s.AddBackend(c)
 	s.AddBackend(c)
