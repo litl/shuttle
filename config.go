@@ -1,10 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"log"
-	"net/http"
+	"sync"
 )
 
 func loadConfig() {
@@ -27,22 +28,39 @@ func loadConfig() {
 		}
 
 		for _, svcCfg := range svcs {
-			svc := NewService(svcCfg)
-			if e := svc.Start(); e != nil {
+			if e := Registry.AddService(svcCfg); e != nil {
 				log.Println("service error:", e)
 			}
 		}
 	}
 }
 
-func getConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := Services.Config()
+// protects the state config file
+var configMutex sync.Mutex
 
-	jsonCfg, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+func writeStateConfig() {
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	if stateConfig == "" {
+		log.Println("No state file. Not saving changes")
 		return
 	}
 
-	w.Write(jsonCfg)
+	cfg := marshal(Registry.Config())
+	if len(cfg) == 0 {
+		return
+	}
+
+	lastCfg, _ := ioutil.ReadFile(stateConfig)
+	if bytes.Equal(cfg, lastCfg) {
+		log.Println("No change in config")
+		return
+	}
+
+	// We should probably write a temp file and mv for atomic update.
+	err := ioutil.WriteFile(stateConfig, cfg, 0644)
+	if err != nil {
+		log.Println("Error saving config state:", err)
+	}
 }

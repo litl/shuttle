@@ -2,23 +2,34 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
 
+func getConfig(w http.ResponseWriter, r *http.Request) {
+	w.Write(marshal(Registry.Config()))
+}
+
+func getStats(w http.ResponseWriter, r *http.Request) {
+	w.Write(marshal(Registry.Stats()))
+}
+
 func getService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	svc := Services.Get(vars["service"])
-	if svc == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	serviceStats, err := Registry.ServiceStats(vars["service"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	fmt.Fprintln(w, svc)
+
+	w.Write(marshal(serviceStats))
 }
 
 func postService(w http.ResponseWriter, r *http.Request) {
@@ -40,63 +51,46 @@ func postService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc := NewService(svcCfg)
-
-	if e := svc.Start(); e != nil {
+	if e := Registry.AddService(svcCfg); e != nil {
 		// we can probably distinguish between 4xx and 5xx errors here at some point.
-		log.Println(err)
-		http.Error(w, e.Error(), http.StatusInternalServerError)
-		return
+		log.Printf("service %s exists, updating", svcCfg.Name)
+		if e := Registry.UpdateService(svcCfg); e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
-	fmt.Fprintln(w, svc)
+	go writeStateConfig()
+	w.Write(marshal(Registry.Config()))
 }
 
 func deleteService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	svc := Services.Remove(vars["service"])
-	if svc == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	err := Registry.RemoveService(vars["service"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-
-	fmt.Fprintln(w, svc)
-}
-
-func listServices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	fmt.Fprintln(w, Services.String())
+	go writeStateConfig()
+	w.Write(marshal(Registry.Config()))
 }
 
 func getBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	svc := Services.Get(vars["service"])
-	if svc == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+	serviceName := vars["service"]
+	backendName := vars["backend"]
+
+	backend, err := Registry.BackendStats(serviceName, backendName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	backend := svc.Get(vars["backend"])
-	if backend == nil {
-		http.Error(w, "backend not found", http.StatusNotFound)
-		return
-	}
-
-	fmt.Fprintln(w, backend)
+	w.Write(marshal(backend))
 }
 
 func postBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-
-	svc := Services.Get(vars["service"])
-	if svc == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
-		return
-	}
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -106,7 +100,10 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	backendCfg := BackendConfig{Name: vars["backend"]}
+	backendName := vars["backend"]
+	serviceName := vars["service"]
+
+	backendCfg := BackendConfig{Name: backendName}
 	err = json.Unmarshal(body, &backendCfg)
 	if err != nil {
 		log.Println(err)
@@ -114,22 +111,66 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend := NewBackend(backendCfg)
+	if err := Registry.AddBackend(serviceName, backendCfg); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	svc.Add(backend)
+	go writeStateConfig()
+	w.Write(marshal(Registry.Config()))
 }
 
 func deleteBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	service := Services.Get(vars["service"])
-	if service == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
+
+	serviceName := vars["service"]
+	backendName := vars["backend"]
+
+	if err := Registry.RemoveBackend(serviceName, backendName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	backend := service.Remove(vars["backend"])
-	if backend == nil {
-		http.Error(w, "backend not found", http.StatusNotFound)
-		return
+	go writeStateConfig()
+	w.Write(marshal(Registry.Config()))
+}
+
+func addHandlers() {
+	r := mux.NewRouter()
+	r.HandleFunc("/", getStats).Methods("GET")
+	r.HandleFunc("/config", getConfig).Methods("GET")
+	r.HandleFunc("/{service}", getService).Methods("GET")
+	r.HandleFunc("/{service}", postService).Methods("PUT", "POST")
+	r.HandleFunc("/{service}", deleteService).Methods("DELETE")
+	r.HandleFunc("/{service}/{backend}", getBackend).Methods("GET")
+	r.HandleFunc("/{service}/{backend}", postBackend).Methods("PUT", "POST")
+	r.HandleFunc("/{service}/{backend}", deleteBackend).Methods("DELETE")
+	http.Handle("/", r)
+}
+
+func startHTTPServer() {
+	addHandlers()
+	log.Println("shuttle listening on", listenAddr)
+
+	netw := "tcp"
+
+	if strings.HasPrefix(listenAddr, "/") {
+		netw = "unix"
+
+		// remove our old socket if we left it lying around
+		if stats, err := os.Stat(listenAddr); err == nil {
+			if stats.Mode()&os.ModeSocket != 0 {
+				os.Remove(listenAddr)
+			}
+		}
+
+		defer os.Remove(listenAddr)
 	}
+
+	listener, err := net.Listen(netw, listenAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.Serve(listener, nil)
 }

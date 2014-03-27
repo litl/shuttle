@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -10,110 +8,10 @@ import (
 )
 
 var (
-	Services = ServiceRegistry{
+	Registry = ServiceRegistry{
 		svcs: make(map[string]*Service, 0),
 	}
 )
-
-// TODO: updating the Service left a hidden backend
-
-type Backend struct {
-	sync.Mutex
-	Name   string
-	Addr   string
-	Check  string
-	Up     bool
-	Weight uint64
-	Sent   uint64
-	Rcvd   uint64
-	Errors uint64
-	Conns  int64
-	Active int64
-
-	// these are loaded from the service, se a backend doesn't need to acces
-	// the service struct at all.
-	dialTimeout time.Duration
-	rwTimeout   time.Duration
-}
-
-// The json stats we return for the backend
-type BackendStat struct {
-	Name   string `json:"name"`
-	Addr   string `json:"address"`
-	Check  string `json:"check_address"`
-	Up     bool   `json:"up"`
-	Weight uint64 `json:"weight"`
-	Sent   uint64 `json:"sent"`
-	Rcvd   uint64 `json:"received"`
-	Errors uint64 `json:"errors"`
-	Conns  int64  `json:"connections"`
-	Active int64  `json:"active"`
-}
-
-// The subset of fields we load and serialize for config.
-type BackendConfig struct {
-	Name   string `json:"name"`
-	Addr   string `json:"address"`
-	Check  string `json:"check_address"`
-	Weight uint64 `json:"weight"`
-}
-
-func NewBackend(cfg BackendConfig) *Backend {
-	b := &Backend{
-		Name:   cfg.Name,
-		Addr:   cfg.Addr,
-		Check:  cfg.Check,
-		Weight: cfg.Weight,
-	}
-	return b
-}
-
-// Copy the backend state into a BackendStat struct.
-// We probably don't need atomic loads for the live stats here.
-func (b *Backend) Stats() BackendStat {
-	b.Lock()
-	defer b.Unlock()
-
-	stats := BackendStat{
-		Name:   b.Name,
-		Addr:   b.Addr,
-		Check:  b.Check,
-		Up:     b.Up,
-		Weight: b.Weight,
-		Sent:   b.Sent,
-		Rcvd:   b.Rcvd,
-		Errors: b.Errors,
-		Conns:  b.Conns,
-		Active: b.Active,
-	}
-
-	return stats
-}
-
-// Return the struct for marshaling into a json config
-func (b *Backend) Config() BackendConfig {
-	b.Lock()
-	defer b.Unlock()
-
-	cfg := BackendConfig{
-		Name:   b.Name,
-		Addr:   b.Addr,
-		Check:  b.Check,
-		Weight: b.Weight,
-	}
-
-	return cfg
-}
-
-// Backends and Servers Stringify themselves directly into their config format.
-func (b Backend) String() string {
-	j, err := json.MarshalIndent(b.Stats(), "", "  ")
-	if err != nil {
-		log.Println("Backend JSON error:", err)
-		return ""
-	}
-	return string(j)
-}
 
 type Service struct {
 	sync.Mutex
@@ -121,16 +19,15 @@ type Service struct {
 	Addr          string
 	Backends      []*Backend
 	Balance       string
-	Inter         uint64
-	ErrLim        uint64
+	CheckInterval uint64
 	Fall          uint64
 	Rise          uint64
 	ClientTimeout time.Duration
 	ServerTimeout time.Duration
 	DialTimeout   time.Duration
-	Sent          uint64
-	Rcvd          uint64
-	Errors        uint64
+	Sent          int64
+	Rcvd          int64
+	Errors        int64
 
 	// Next returns the backend to be used for a new connection according our
 	// load balancing algorithm
@@ -149,16 +46,17 @@ type ServiceStat struct {
 	Addr          string        `json:"address"`
 	Backends      []BackendStat `json:"backends"`
 	Balance       string        `json:"balance"`
-	Inter         uint64        `json:"check_interval"`
-	ErrLim        uint64        `json:"error_limit"`
+	CheckInterval uint64        `json:"check_interval"`
 	Fall          uint64        `json:"fall"`
 	Rise          uint64        `json:"rise"`
 	ClientTimeout uint64        `json:"client_timeout"`
 	ServerTimeout uint64        `json:"server_timeout"`
 	DialTimeout   uint64        `json:"connect_timeout"`
-	Sent          uint64        `json:"sent"`
-	Rcvd          uint64        `json:"received"`
-	Errors        uint64        `json:"errors"`
+	Sent          int64         `json:"sent"`
+	Rcvd          int64         `json:"received"`
+	Errors        int64         `json:"errors"`
+	Conns         int64         `json:"connections"`
+	Active        int64         `json:"active"`
 }
 
 // Subset of service fields needed for configuration.
@@ -167,8 +65,7 @@ type ServiceConfig struct {
 	Addr          string          `json:"address"`
 	Backends      []BackendConfig `json:"backends"`
 	Balance       string          `json:"balance"`
-	Inter         uint64          `json:"check_interval"`
-	ErrLim        uint64          `json:"error_limit"`
+	CheckInterval uint64          `json:"check_interval"`
 	Fall          uint64          `json:"fall"`
 	Rise          uint64          `json:"rise"`
 	ClientTimeout uint64          `json:"client_timeout"`
@@ -181,18 +78,35 @@ func NewService(cfg ServiceConfig) *Service {
 	s := &Service{
 		Name:          cfg.Name,
 		Addr:          cfg.Addr,
-		Balance:       cfg.Balance,
-		Inter:         cfg.Inter,
-		ErrLim:        cfg.ErrLim,
+		CheckInterval: cfg.CheckInterval,
 		Fall:          cfg.Fall,
 		Rise:          cfg.Rise,
-		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Second,
-		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Second,
-		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Second,
+		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Millisecond,
+		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Millisecond,
+		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Millisecond,
+	}
+
+	if s.CheckInterval == 0 {
+		s.CheckInterval = 2
+	}
+	if s.Rise == 0 {
+		s.Rise = 2
+	}
+	if s.Fall == 0 {
+		s.Fall = 2
 	}
 
 	for _, b := range cfg.Backends {
-		s.Backends = append(s.Backends, NewBackend(b))
+		s.add(NewBackend(b))
+	}
+
+	switch cfg.Balance {
+	case "RR", "":
+		s.next = s.roundRobin
+	case "LC":
+		s.next = s.leastConn
+	default:
+		log.Printf("invalid balancing algorithm '%s'", cfg.Balance)
 	}
 
 	return s
@@ -206,13 +120,12 @@ func (s *Service) Stats() ServiceStat {
 		Name:          s.Name,
 		Addr:          s.Addr,
 		Balance:       s.Balance,
-		Inter:         s.Inter,
-		ErrLim:        s.ErrLim,
+		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Second),
-		ServerTimeout: uint64(s.ServerTimeout / time.Second),
-		DialTimeout:   uint64(s.DialTimeout / time.Second),
+		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
 	}
 
 	for _, b := range s.Backends {
@@ -220,6 +133,8 @@ func (s *Service) Stats() ServiceStat {
 		stats.Sent += b.Sent
 		stats.Rcvd += b.Rcvd
 		stats.Errors += b.Errors
+		stats.Conns += b.Conns
+		stats.Active += b.Active
 	}
 
 	return stats
@@ -233,13 +148,12 @@ func (s *Service) Config() ServiceConfig {
 		Name:          s.Name,
 		Addr:          s.Addr,
 		Balance:       s.Balance,
-		Inter:         s.Inter,
-		ErrLim:        s.ErrLim,
+		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Second),
-		ServerTimeout: uint64(s.ServerTimeout / time.Second),
-		DialTimeout:   uint64(s.DialTimeout / time.Second),
+		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
 	}
 	for _, b := range s.Backends {
 		config.Backends = append(config.Backends, b.Config())
@@ -248,48 +162,11 @@ func (s *Service) Config() ServiceConfig {
 	return config
 }
 
-// Fill out and verify service
-func (s *Service) Start() (err error) {
-	s.Lock()
-	defer s.Unlock()
-
-	switch s.Balance {
-	case "":
-		s.Balance = "RR"
-		fallthrough
-	case "RR":
-		s.next = s.roundRobin
-	case "LC":
-		s.next = s.leastConn
-	default:
-		return fmt.Errorf("invalid balancing algorithm")
-	}
-
-	s.listener, err = newTimeoutListener(s.Addr, s.ClientTimeout)
-	if err != nil {
-		return err
-	}
-
-	if s.Backends == nil {
-		s.Backends = make([]*Backend, 0)
-	}
-
-	go s.run()
-	Services.Add(s)
-
-	return nil
+func (s *Service) String() string {
+	return string(marshal(s.Config()))
 }
 
-func (s Service) String() string {
-	j, err := json.MarshalIndent(s.Stats(), "", "  ")
-	if err != nil {
-		log.Println("Service JSON error:", err)
-		return ""
-	}
-	return string(j)
-}
-
-func (s *Service) Get(name string) *Backend {
+func (s *Service) get(name string) *Backend {
 	s.Lock()
 	defer s.Unlock()
 
@@ -301,22 +178,33 @@ func (s *Service) Get(name string) *Backend {
 	return nil
 }
 
-func (s *Service) Add(backend *Backend) {
+// Add or replace a Backend in this service
+func (s *Service) add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
-	for _, b := range s.Backends {
+	backend.up = true
+	backend.rwTimeout = s.ServerTimeout
+	backend.dialTimeout = s.DialTimeout
+	backend.checkInterval = time.Duration(s.CheckInterval) * time.Millisecond
+
+	// replace an existing backend if we have it.
+	for i, b := range s.Backends {
 		if b.Name == backend.Name {
+			b.Stop()
+			s.Backends[i] = backend
+			backend.Start()
 			return
 		}
 	}
 
-	backend.Up = true
-	backend.rwTimeout = s.ServerTimeout
 	s.Backends = append(s.Backends, backend)
+
+	backend.Start()
 }
 
-func (s *Service) Remove(name string) *Backend {
+// Remove a Backend by name
+func (s *Service) remove(name string) bool {
 	s.Lock()
 	defer s.Unlock()
 
@@ -326,9 +214,28 @@ func (s *Service) Remove(name string) *Backend {
 			deleted := b
 			s.Backends[i], s.Backends[last] = s.Backends[last], nil
 			s.Backends = s.Backends[:last]
-			return deleted
+			deleted.Stop()
+			return true
 		}
 	}
+	return false
+}
+
+// Fill out and verify service
+func (s *Service) start() (err error) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.listener, err = newTimeoutListener(s.Addr, s.ClientTimeout)
+	if err != nil {
+		return err
+	}
+
+	if s.Backends == nil {
+		s.Backends = make([]*Backend, 0)
+	}
+
+	s.run()
 	return nil
 }
 
@@ -338,11 +245,15 @@ func (s *Service) run() {
 		for {
 			conn, err := s.listener.Accept()
 			if err != nil {
-				log.Println(err)
-				continue
+				if err, ok := err.(*net.OpError); ok && err.Temporary() {
+					continue
+				}
+				// we must be getting shut down
+				return
 			}
 
 			backend := s.next()
+
 			if backend == nil {
 				log.Println("error: no backend for", s.Name)
 				conn.Close()
@@ -354,76 +265,23 @@ func (s *Service) run() {
 	}()
 }
 
-// Stop the Service's Accept loop by closing the Listener
-func (s *Service) Stop() {
+// Stop the Service's Accept loop by closing the Listener,
+// and stop all backends for this service.
+func (s *Service) stop() {
+	s.Lock()
+	defer s.Unlock()
+
+	for _, backend := range s.Backends {
+		backend.Stop()
+	}
+
+	// the service may have been bad, and the listener failed
+	if s.listener == nil {
+		return
+	}
+
 	err := s.listener.Close()
 	if err != nil {
 		log.Println(err)
 	}
-}
-
-// Global container for all configured services.
-type ServiceRegistry struct {
-	sync.Mutex
-	svcs map[string]*Service
-}
-
-func (s *ServiceRegistry) Add(svc *Service) {
-	s.Lock()
-	defer s.Unlock()
-
-	s.svcs[svc.Name] = svc
-}
-
-func (s *ServiceRegistry) Remove(name string) *Service {
-	s.Lock()
-	defer s.Unlock()
-
-	svc, ok := s.svcs[name]
-	if ok {
-		delete(s.svcs, name)
-		return svc
-	}
-	return nil
-}
-
-func (s *ServiceRegistry) Get(name string) *Service {
-	s.Lock()
-	defer s.Unlock()
-	return s.svcs[name]
-}
-
-func (s *ServiceRegistry) Stats() []ServiceStat {
-	s.Lock()
-	defer s.Unlock()
-
-	var stats []ServiceStat
-	for _, v := range s.svcs {
-		stats = append(stats, v.Stats())
-	}
-
-	return stats
-}
-
-func (s *ServiceRegistry) Config() []ServiceConfig {
-	s.Lock()
-	defer s.Unlock()
-
-	var configs []ServiceConfig
-	for _, v := range s.svcs {
-		configs = append(configs, v.Config())
-	}
-
-	return configs
-}
-
-func (s *ServiceRegistry) String() string {
-	stats := s.Stats()
-
-	j, err := json.MarshalIndent(stats, "", "  ")
-	if err != nil {
-		log.Println("could not marshal services:", err)
-		return ""
-	}
-	return string(j)
 }
