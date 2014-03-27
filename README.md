@@ -36,3 +36,14 @@ be included in the service's json, and configured separately.
 Issuing a PUT with a json config to the backend's endpoint will create or
 replace that backend. Existing connections relying on the old config will
 continue to run until the connection is closed.
+
+## TODO
+
+- Connection limits (per service and/or per backend)
+- UDP proxy
+- Mark backend down after non-check connection failures
+- Health check via http, or tcp call/resp pattern.
+- Partial config updates without overwriting everything.
+- Protocol bridging? e.g. `TCP<->unix`
+- better logging
+- User switching? (though we couldn't rebind privileged ports after switching)
