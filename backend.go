@@ -15,7 +15,7 @@ type Backend struct {
 	Addr      string
 	CheckAddr string
 	up        bool
-	Weight    int64
+	Weight    int
 	Sent      int64
 	Rcvd      int64
 	Errors    int64
@@ -27,11 +27,11 @@ type Backend struct {
 	dialTimeout   time.Duration
 	rwTimeout     time.Duration
 	checkInterval time.Duration
-	rise          uint64
-	riseCount     uint64
+	rise          int
+	riseCount     int
 	checkOK       int
-	fall          uint64
-	fallCount     uint64
+	fall          int
+	fallCount     int
 	checkFail     int
 
 	startCheck sync.Once
@@ -45,7 +45,7 @@ type BackendStat struct {
 	Addr      string `json:"address"`
 	CheckAddr string `json:"check_address"`
 	Up        bool   `json:"up"`
-	Weight    int64  `json:"weight"`
+	Weight    int    `json:"weight"`
 	Sent      int64  `json:"sent"`
 	Rcvd      int64  `json:"received"`
 	Errors    int64  `json:"errors"`
@@ -60,7 +60,7 @@ type BackendConfig struct {
 	Name      string `json:"name"`
 	Addr      string `json:"address"`
 	CheckAddr string `json:"check_address"`
-	Weight    int64  `json:"weight"`
+	Weight    int    `json:"weight"`
 }
 
 func NewBackend(cfg BackendConfig) *Backend {

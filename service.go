@@ -19,9 +19,9 @@ type Service struct {
 	Addr          string
 	Backends      []*Backend
 	Balance       string
-	CheckInterval uint64
-	Fall          uint64
-	Rise          uint64
+	CheckInterval int
+	Fall          int
+	Rise          int
 	ClientTimeout time.Duration
 	ServerTimeout time.Duration
 	DialTimeout   time.Duration
@@ -46,12 +46,12 @@ type ServiceStat struct {
 	Addr          string        `json:"address"`
 	Backends      []BackendStat `json:"backends"`
 	Balance       string        `json:"balance"`
-	CheckInterval uint64        `json:"check_interval"`
-	Fall          uint64        `json:"fall"`
-	Rise          uint64        `json:"rise"`
-	ClientTimeout uint64        `json:"client_timeout"`
-	ServerTimeout uint64        `json:"server_timeout"`
-	DialTimeout   uint64        `json:"connect_timeout"`
+	CheckInterval int           `json:"check_interval"`
+	Fall          int           `json:"fall"`
+	Rise          int           `json:"rise"`
+	ClientTimeout int           `json:"client_timeout"`
+	ServerTimeout int           `json:"server_timeout"`
+	DialTimeout   int           `json:"connect_timeout"`
 	Sent          int64         `json:"sent"`
 	Rcvd          int64         `json:"received"`
 	Errors        int64         `json:"errors"`
@@ -65,12 +65,12 @@ type ServiceConfig struct {
 	Addr          string          `json:"address"`
 	Backends      []BackendConfig `json:"backends"`
 	Balance       string          `json:"balance"`
-	CheckInterval uint64          `json:"check_interval"`
-	Fall          uint64          `json:"fall"`
-	Rise          uint64          `json:"rise"`
-	ClientTimeout uint64          `json:"client_timeout"`
-	ServerTimeout uint64          `json:"server_timeout"`
-	DialTimeout   uint64          `json:"connect_timeout"`
+	CheckInterval int             `json:"check_interval"`
+	Fall          int             `json:"fall"`
+	Rise          int             `json:"rise"`
+	ClientTimeout int             `json:"client_timeout"`
+	ServerTimeout int             `json:"server_timeout"`
+	DialTimeout   int             `json:"connect_timeout"`
 }
 
 // Create a Service from a config struct
@@ -123,9 +123,9 @@ func (s *Service) Stats() ServiceStat {
 		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
-		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
-		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
+		ClientTimeout: int(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: int(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   int(s.DialTimeout / time.Millisecond),
 	}
 
 	for _, b := range s.Backends {
@@ -151,9 +151,9 @@ func (s *Service) Config() ServiceConfig {
 		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
 		Rise:          s.Rise,
-		ClientTimeout: uint64(s.ClientTimeout / time.Millisecond),
-		ServerTimeout: uint64(s.ServerTimeout / time.Millisecond),
-		DialTimeout:   uint64(s.DialTimeout / time.Millisecond),
+		ClientTimeout: int(s.ClientTimeout / time.Millisecond),
+		ServerTimeout: int(s.ServerTimeout / time.Millisecond),
+		DialTimeout:   int(s.DialTimeout / time.Millisecond),
 	}
 	for _, b := range s.Backends {
 		config.Backends = append(config.Backends, b.Config())
