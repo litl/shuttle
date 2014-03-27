@@ -246,6 +246,7 @@ func (s *Service) run() {
 			conn, err := s.listener.Accept()
 			if err != nil {
 				if err, ok := err.(*net.OpError); ok && err.Temporary() {
+					log.Println("warning:", err)
 					continue
 				}
 				// we must be getting shut down
