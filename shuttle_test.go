@@ -234,6 +234,17 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 	if n != 0 || err != io.EOF {
 		c.Fatal("connection should have been closed")
 	}
+
+	// now bring that server back up
+	server, err := NewTestServer(s.servers[0].addr, c)
+	if err != nil {
+		c.Fatal(err)
+	}
+	s.servers[0] = server
+
+	time.Sleep(800 * time.Millisecond)
+	stats = s.service.Stats()
+	c.Assert(stats.Backends[0].Up, Equals, true)
 }
 
 // Update a backend in place
