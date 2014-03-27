@@ -25,9 +25,9 @@ type Service struct {
 	ClientTimeout time.Duration
 	ServerTimeout time.Duration
 	DialTimeout   time.Duration
-	Sent          uint64
-	Rcvd          uint64
-	Errors        uint64
+	Sent          int64
+	Rcvd          int64
+	Errors        int64
 
 	// Next returns the backend to be used for a new connection according our
 	// load balancing algorithm
@@ -52,9 +52,9 @@ type ServiceStat struct {
 	ClientTimeout uint64        `json:"client_timeout"`
 	ServerTimeout uint64        `json:"server_timeout"`
 	DialTimeout   uint64        `json:"connect_timeout"`
-	Sent          uint64        `json:"sent"`
-	Rcvd          uint64        `json:"received"`
-	Errors        uint64        `json:"errors"`
+	Sent          int64         `json:"sent"`
+	Rcvd          int64         `json:"received"`
+	Errors        int64         `json:"errors"`
 	Conns         int64         `json:"connections"`
 	Active        int64         `json:"active"`
 }

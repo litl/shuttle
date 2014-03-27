@@ -15,10 +15,10 @@ type Backend struct {
 	Addr      string
 	CheckAddr string
 	up        bool
-	Weight    uint64
-	Sent      uint64
-	Rcvd      uint64
-	Errors    uint64
+	Weight    int64
+	Sent      int64
+	Rcvd      int64
+	Errors    int64
 	Conns     int64
 	Active    int64
 
@@ -45,10 +45,10 @@ type BackendStat struct {
 	Addr      string `json:"address"`
 	CheckAddr string `json:"check_address"`
 	Up        bool   `json:"up"`
-	Weight    uint64 `json:"weight"`
-	Sent      uint64 `json:"sent"`
-	Rcvd      uint64 `json:"received"`
-	Errors    uint64 `json:"errors"`
+	Weight    int64  `json:"weight"`
+	Sent      int64  `json:"sent"`
+	Rcvd      int64  `json:"received"`
+	Errors    int64  `json:"errors"`
 	Conns     int64  `json:"connections"`
 	Active    int64  `json:"active"`
 	CheckOK   int    `json:"check_success"`
@@ -60,7 +60,7 @@ type BackendConfig struct {
 	Name      string `json:"name"`
 	Addr      string `json:"address"`
 	CheckAddr string `json:"check_address"`
-	Weight    uint64 `json:"weight"`
+	Weight    int64  `json:"weight"`
 }
 
 func NewBackend(cfg BackendConfig) *Backend {
@@ -172,7 +172,7 @@ func (b *Backend) check() {
 
 // Periodically check the status of this backend
 func (b *Backend) healthCheck() {
-	t := time.NewTimer(b.checkInterval)
+	t := time.NewTicker(b.checkInterval)
 	for {
 		select {
 		case <-b.stopCheck:
@@ -203,17 +203,18 @@ func (b *Backend) Proxy(conn net.Conn) {
 	if err != nil {
 		log.Println("error connecting to backend", err)
 		conn.Close()
-		atomic.AddUint64(errorCount, 1)
+		atomic.AddInt64(errorCount, 1)
 		return
 	}
 
-	// TODO: might not be TCP?
+	// TODO: might not be TCP? (this would panic)
 	bConn := &timeoutConn{
 		TCPConn:   c.(*net.TCPConn),
 		rwTimeout: b.rwTimeout,
 	}
 
-	// TODO: No way to force shutdown. Do we need it?
+	// TODO: No way to force shutdown. Do we need it, or hsould we always just
+	// let a connection run out?
 
 	atomic.AddInt64(conns, 1)
 	atomic.AddInt64(active, 1)
@@ -242,36 +243,49 @@ func (b *Backend) Proxy(conn net.Conn) {
 	<-waitFor
 }
 
+// An io.Copy that updates the count during transfers.
+func countingCopy(dst io.Writer, src io.Reader, written *int64) (err error) {
+	buf := make([]byte, 32*1024)
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw > 0 {
+				atomic.AddInt64(written, int64(nw))
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er == io.EOF {
+			break
+		}
+		if er != nil {
+			err = er
+			break
+		}
+	}
+	return err
+}
+
 // This does the actual data transfer.
 // The broker only closes the Read side on error.
-// TODO: inline io.Copy so we can implement an idle timeout, as well as get live write counts
-// without the extra wrapper.
-func broker(dst, src net.Conn, srcClosed chan bool, written, errors *uint64) {
-	w := &countingWriter{dst, written}
-	_, err := io.Copy(w, src)
+func broker(dst, src net.Conn, srcClosed chan bool, written, errors *int64) {
+	err := countingCopy(dst, src, written)
 	if err != nil {
-		atomic.AddUint64(errors, 1)
+		atomic.AddInt64(errors, 1)
 		log.Printf("Copy error: %s", err)
 	}
 	if err := src.Close(); err != nil {
-		atomic.AddUint64(errors, 1)
+		atomic.AddInt64(errors, 1)
 		log.Printf("Close error: %s", err)
 	}
 	srcClosed <- true
-}
-
-type countingWriter struct {
-	io.Writer
-	count *uint64
-}
-
-func (w *countingWriter) Write(p []byte) (n int, err error) {
-	n, err = w.Writer.Write(p)
-	if err != nil {
-		return
-	}
-	atomic.AddUint64(w.count, uint64(n))
-	return n, nil
 }
 
 // A net.Conn that sets a deadline for every read or write operation.
