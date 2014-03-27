@@ -184,6 +184,11 @@ func (b *Backend) healthCheck() {
 	}
 }
 
+// use to identify embedded TCPConns
+type closeReader interface {
+	CloseRead() error
+}
+
 func (b *Backend) Proxy(conn net.Conn) {
 	// Backend is a pointer receiver so we can get the address of the fields,
 	// but all updates will be done atomically.
@@ -233,10 +238,10 @@ func (b *Backend) Proxy(conn net.Conn) {
 	var waitFor chan bool
 	select {
 	case <-clientClosed:
-		bConn.TCPConn.CloseRead()
+		bConn.CloseRead()
 		waitFor = backendClosed
 	case <-backendClosed:
-		bConn.TCPConn.CloseRead()
+		conn.(closeReader).CloseRead()
 		waitFor = clientClosed
 	}
 	// wait for the other connection to close
@@ -314,39 +319,4 @@ func (c *timeoutConn) Write(b []byte) (int, error) {
 		}
 	}
 	return c.TCPConn.Write(b)
-}
-
-// A net.Listener that provides a read/write timeout
-type timeoutListener struct {
-	net.Listener
-	rwTimeout time.Duration
-}
-
-func newTimeoutListener(addr string, timeout time.Duration) (net.Listener, error) {
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-
-	tl := &timeoutListener{
-		Listener:  l,
-		rwTimeout: timeout,
-	}
-	return tl, nil
-}
-func (l *timeoutListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-
-	c, ok := conn.(*net.TCPConn)
-	if ok {
-		tc := &timeoutConn{
-			TCPConn:   c,
-			rwTimeout: l.rwTimeout,
-		}
-		return tc, nil
-	}
-	return conn, nil
 }

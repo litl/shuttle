@@ -286,3 +286,38 @@ func (s *Service) stop() {
 		log.Println(err)
 	}
 }
+
+// A net.Listener that provides a read/write timeout
+type timeoutListener struct {
+	net.Listener
+	rwTimeout time.Duration
+}
+
+func newTimeoutListener(addr string, timeout time.Duration) (net.Listener, error) {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	tl := &timeoutListener{
+		Listener:  l,
+		rwTimeout: timeout,
+	}
+	return tl, nil
+}
+func (l *timeoutListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	c, ok := conn.(*net.TCPConn)
+	if ok {
+		tc := &timeoutConn{
+			TCPConn:   c,
+			rwTimeout: l.rwTimeout,
+		}
+		return tc, nil
+	}
+	return conn, nil
+}
