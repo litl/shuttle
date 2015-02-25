@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"sync"
+
+	"github.com/litl/galaxy/log"
+	"github.com/litl/galaxy/shuttle/client"
 )
 
 func loadConfig() {
@@ -16,21 +18,20 @@ func loadConfig() {
 
 		cfgData, err := ioutil.ReadFile(cfgPath)
 		if err != nil {
-			log.Println("error reading config:", err)
+			log.Warnln("Error reading config:", err)
 			continue
 		}
 
-		var svcs []ServiceConfig
-		err = json.Unmarshal(cfgData, &svcs)
+		var cfg client.Config
+		err = json.Unmarshal(cfgData, &cfg)
 		if err != nil {
-			log.Println("config error:", err)
+			log.Warnln("Config error:", err)
 			continue
 		}
+		log.Debug("Loaded config from:", cfgPath)
 
-		for _, svcCfg := range svcs {
-			if e := Registry.AddService(svcCfg); e != nil {
-				log.Println("service error:", e)
-			}
+		if err := Registry.UpdateConfig(cfg); err != nil {
+			log.Printf("Unable to load config: error: %s", err)
 		}
 	}
 }
@@ -43,7 +44,7 @@ func writeStateConfig() {
 	defer configMutex.Unlock()
 
 	if stateConfig == "" {
-		log.Println("No state file. Not saving changes")
+		log.Debug("No state file. Not saving changes")
 		return
 	}
 

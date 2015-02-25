@@ -4,18 +4,24 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
-	. "launchpad.net/gocheck"
+	"github.com/litl/galaxy/log"
+	"github.com/litl/galaxy/shuttle/client"
+	. "gopkg.in/check.v1"
 )
 
 func init() {
-	//log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetOutput(ioutil.Discard)
+	debug = false
+
+	if debug {
+		log.DefaultLogger.Level = log.DEBUG
+	} else {
+		log.DefaultLogger = log.New(ioutil.Discard, "", 0)
+	}
 }
 
 // something that can wrap a gocheck.C testing.T or testing.B
@@ -25,6 +31,7 @@ type Tester interface {
 	Fatalf(format string, args ...interface{})
 	Log(args ...interface{})
 	Logf(format string, args ...interface{})
+	Assert(interface{}, Checker, ...interface{})
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -40,18 +47,19 @@ var _ = Suite(&BasicSuite{})
 // needed.
 func mySetup(s *BasicSuite, t Tester) {
 	// start 4 possible backend servers
-	ports := []string{"2001", "2002", "2003", "2004"}
-	for _, p := range ports {
-		server, err := NewTestServer("127.0.0.1:"+p, t)
+	for i := 0; i < 4; i++ {
+		server, err := NewTestServer("127.0.0.1:0", t)
 		if err != nil {
 			t.Fatal(err)
 		}
 		s.servers = append(s.servers, server)
 	}
 
-	svcCfg := ServiceConfig{
-		Name: "testService",
-		Addr: "127.0.0.1:2222",
+	svcCfg := client.ServiceConfig{
+		Name:          "testService",
+		Addr:          "127.0.0.1:2000",
+		ClientTimeout: 1000,
+		ServerTimeout: 1000,
 	}
 
 	if err := Registry.AddService(svcCfg); err != nil {
@@ -69,6 +77,15 @@ func myTearDown(s *BasicSuite, t Tester) {
 
 	// get rid of the servers refs too!
 	s.servers = nil
+
+	// clear global defaults in Registry
+	Registry.cfg.Balance = ""
+	Registry.cfg.CheckInterval = 0
+	Registry.cfg.Fall = 0
+	Registry.cfg.Rise = 0
+	Registry.cfg.ClientTimeout = 0
+	Registry.cfg.ServerTimeout = 0
+	Registry.cfg.DialTimeout = 0
 
 	err := Registry.RemoveService(s.service.Name)
 	if err != nil {
@@ -94,7 +111,7 @@ func (s *BasicSuite) AddBackend(c Tester) {
 	}
 
 	name := fmt.Sprintf("backend_%d", next)
-	cfg := BackendConfig{
+	cfg := client.BackendConfig{
 		Name:      name,
 		Addr:      s.servers[next].addr,
 		CheckAddr: s.servers[next].addr,
@@ -127,7 +144,7 @@ func checkResp(addr, expected string, c Tester) {
 	}
 
 	if expected != "" && resp != expected {
-		c.Fatal("Expected", expected, ", got", resp)
+		c.Fatal("Expected ", expected, ", got ", resp)
 	}
 }
 
@@ -160,22 +177,22 @@ func (s *BasicSuite) TestWeightedRoundRobin(c *C) {
 	// so skip the tcp connection this time.
 
 	// one from the first server
-	c.Assert(s.service.next().Name, Equals, "backend_0")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_0")
 	// A weight of 2 should return twice
-	c.Assert(s.service.next().Name, Equals, "backend_1")
-	c.Assert(s.service.next().Name, Equals, "backend_1")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_1")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_1")
 	// And a weight of 3 should return thrice
-	c.Assert(s.service.next().Name, Equals, "backend_2")
-	c.Assert(s.service.next().Name, Equals, "backend_2")
-	c.Assert(s.service.next().Name, Equals, "backend_2")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_2")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_2")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_2")
 	// and once around or good measure
-	c.Assert(s.service.next().Name, Equals, "backend_0")
+	c.Assert(s.service.next()[0].Name, Equals, "backend_0")
 }
 
 func (s *BasicSuite) TestLeastConn(c *C) {
 	// replace out default service with one using LeastConn balancing
 	Registry.RemoveService("testService")
-	svcCfg := ServiceConfig{
+	svcCfg := client.ServiceConfig{
 		Name:    "testService",
 		Addr:    "127.0.0.1:2223",
 		Balance: "LC",
@@ -190,11 +207,23 @@ func (s *BasicSuite) TestLeastConn(c *C) {
 	s.AddBackend(c)
 
 	// tie up 4 connections to the backends
+	buff := make([]byte, 64)
 	for i := 0; i < 4; i++ {
 		conn, e := net.Dial("tcp", s.service.Addr)
 		if e != nil {
 			c.Fatal(e)
 		}
+		// we need to make a call on this proxy to ensure the backend
+		// connection is complete.
+		if _, err := io.WriteString(conn, "connect\n"); err != nil {
+			c.Fatal(err)
+		}
+
+		n, err := conn.Read(buff)
+		if err != nil || n == 0 {
+			c.Fatal("no response from backend")
+		}
+
 		defer conn.Close()
 	}
 
@@ -245,6 +274,23 @@ func (s *BasicSuite) TestFailedCheck(c *C) {
 	time.Sleep(800 * time.Millisecond)
 	stats = s.service.Stats()
 	c.Assert(stats.Backends[0].Up, Equals, true)
+}
+
+// Make sure the connection is re-dispatched when Dialing a backend fails
+func (s *BasicSuite) TestConnectAny(c *C) {
+	s.service.CheckInterval = 2000
+	s.service.Fall = 2
+	s.AddBackend(c)
+	s.AddBackend(c)
+
+	// kill the first server
+	s.servers[0].Stop()
+
+	stats := s.service.Stats()
+	c.Assert(stats.Backends[0].Up, Equals, true)
+
+	// Backend 0 still shows up, but we should get connected to backend 1
+	checkResp(s.service.Addr, s.servers[1].addr, c)
 }
 
 // Update a backend in place
@@ -308,7 +354,7 @@ func (s *BasicSuite) TestRemoveBackend(c *C) {
 }
 
 func (s *BasicSuite) TestUpdateService(c *C) {
-	svcCfg := ServiceConfig{
+	svcCfg := client.ServiceConfig{
 		Name: "Update",
 		Addr: "127.0.0.1:9324",
 	}
@@ -322,7 +368,7 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 		c.Fatal(ErrNoService)
 	}
 
-	svcCfg = ServiceConfig{
+	svcCfg = client.ServiceConfig{
 		Name: "Update",
 		Addr: "127.0.0.1:9425",
 	}
@@ -341,7 +387,8 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 	if svc == nil {
 		c.Fatal(ErrNoService)
 	}
-	c.Assert(svc.Addr, Equals, "127.0.0.1:9425")
+	// Addr cannot be updated.  Ensure it's the same as before.
+	c.Assert(svc.Addr, Equals, "127.0.0.1:9324")
 
 	if err := Registry.RemoveService("Update"); err != nil {
 		c.Fatal(err)
@@ -389,4 +436,186 @@ func (s *BasicSuite) TestParallel(c *C) {
 	}
 
 	wg.Wait()
+}
+
+type UDPSuite struct {
+	servers []*udpTestServer
+	service *Service
+}
+
+var _ = Suite(&UDPSuite{})
+
+func (s *UDPSuite) SetUpTest(c *C) {
+	svcCfg := client.ServiceConfig{
+		Name:    "testService",
+		Addr:    "127.0.0.1:11110",
+		Network: "udp",
+	}
+
+	if err := Registry.AddService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	s.service = Registry.GetService(svcCfg.Name)
+}
+
+func (s *UDPSuite) TearDownTest(c *C) {
+	for _, s := range s.servers {
+		s.Stop()
+	}
+
+	// get rid of the servers refs too!
+	s.servers = nil
+
+	// clear global defaults in Registry
+	Registry.cfg.Balance = ""
+	Registry.cfg.CheckInterval = 0
+	Registry.cfg.Fall = 0
+	Registry.cfg.Rise = 0
+	Registry.cfg.ClientTimeout = 0
+	Registry.cfg.ServerTimeout = 0
+	Registry.cfg.DialTimeout = 0
+
+	err := Registry.RemoveService(s.service.Name)
+	if err != nil {
+		c.Fatalf("could not remove service '%s': %s", s.service.Name, err)
+	}
+}
+
+// Add a UDP service, make sure it works, and remove it
+func (s *UDPSuite) TestAddRemove(c *C) {
+	bckCfg := client.BackendConfig{
+		Name:    "UDPServer",
+		Addr:    "127.0.0.1:11111",
+		Network: "udp",
+	}
+
+	s.service.add(NewBackend(bckCfg))
+
+	lAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+	rAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:11110")
+	conn, err := net.ListenUDP("udp", lAddr)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	n, err := conn.WriteToUDP([]byte("TEST"), rAddr)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// try to make sure packets were delivered and read
+	time.Sleep(100 * time.Millisecond)
+
+	stats := s.service.Stats()
+	c.Assert(stats.Rcvd, Equals, int64(n))
+
+	ok := s.service.remove("UDPServer")
+	c.Assert(ok, Equals, true)
+
+	stats = s.service.Stats()
+	c.Assert(len(stats.Backends), Equals, 0)
+
+}
+
+// Make sure UDP Services work, and check our WeightedRoundRobin since we're
+// already testing it.
+func (s *UDPSuite) TestWeightedRoundRobin(c *C) {
+	servers := make([]*udpTestServer, 3)
+
+	var err error
+	for i, _ := range servers {
+		servers[i], err = NewUDPTestServer(fmt.Sprintf("127.0.0.1:1111%d", i+1), c)
+		if err != nil {
+			c.Fatal(err)
+		}
+		bckCfg := client.BackendConfig{
+			Name:    fmt.Sprintf("UDPServer%d", i+1),
+			Addr:    servers[i].addr,
+			Weight:  i + 1,
+			Network: "udp",
+		}
+		s.service.add(NewBackend(bckCfg))
+	}
+
+	defer func() {
+		for _, s := range servers {
+			s.Stop()
+		}
+	}()
+
+	lAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+	rAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:11110")
+
+	conn, err := net.ListenUDP("udp", lAddr)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	for i := 0; i < 12; i++ {
+		msg := fmt.Sprintf("TEST_%d", i)
+		_, err := conn.WriteToUDP([]byte(msg), rAddr)
+		if err != nil {
+			c.Fatal(err)
+		}
+	}
+
+	// The order that packets are delivered to the 3 servers
+	time.Sleep(100 * time.Millisecond)
+	rcvOrder := []int{
+		0, 6, //               servers[0]
+		1, 2, 7, 8, //         servers[1]
+		3, 4, 5, 9, 10, 11, // servers[2]
+	}
+
+	packetNum := 0
+	for _, srv := range servers {
+		srv.Lock()
+		for _, p := range srv.packets {
+			c.Assert(string(p), Equals, fmt.Sprintf("TEST_%d", rcvOrder[packetNum]))
+			packetNum++
+		}
+		srv.Unlock()
+	}
+}
+
+// Throw a lot of packets at the proxy then count what went through
+// This doesn't pass or fail, just logs how much made it to the backend.
+func (s *UDPSuite) TestSpew(c *C) {
+	server, err := NewUDPTestServer("127.0.0.1:11111", c)
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer server.Stop()
+
+	bckCfg := client.BackendConfig{
+		Name:    "UDPServer",
+		Addr:    server.addr,
+		Network: "udp",
+	}
+	s.service.add(NewBackend(bckCfg))
+
+	lAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+	rAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:11110")
+
+	conn, err := net.ListenUDP("udp", lAddr)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	msg := []byte("10   BYTES")
+	toSend := 10000
+	for i := 0; i < toSend; i++ {
+		n, err := conn.WriteToUDP(msg, rAddr)
+		if err != nil || n != len(msg) {
+			c.Fatal(fmt.Sprintf("%d %s", n, err))
+		}
+	}
+
+	// make sure everything the service received made it to the backend.
+	time.Sleep(100 * time.Millisecond)
+	stats := s.service.Stats()
+	c.Logf("Sent %d packets", toSend)
+	c.Logf("Proxied %d packets", stats.Rcvd/10)
+	c.Logf("Received %d packets", server.count)
 }

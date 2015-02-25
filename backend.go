@@ -2,27 +2,31 @@ package main
 
 import (
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/litl/galaxy/log"
+	"github.com/litl/galaxy/shuttle/client"
 )
 
 type Backend struct {
 	sync.Mutex
-	Name      string
-	Addr      string
-	CheckAddr string
-	up        bool
-	Weight    int
-	Sent      int64
-	Rcvd      int64
-	Errors    int64
-	Conns     int64
-	Active    int64
+	Name       string
+	Addr       string
+	CheckAddr  string
+	up         bool
+	Weight     int
+	Sent       int64
+	Rcvd       int64
+	Errors     int64
+	Conns      int64
+	Active     int64
+	HTTPActive int64
+	Network    string
 
-	// these are loaded from the service, se a backend doesn't need to acces
+	// these are loaded from the service, so a backend doesn't need to access
 	// the service struct at all.
 	dialTimeout   time.Duration
 	rwTimeout     time.Duration
@@ -37,38 +41,35 @@ type Backend struct {
 	startCheck sync.Once
 	// stop the health-check loop
 	stopCheck chan interface{}
+
+	// so we only need to ResolveUDPAddr once
+	udpAddr *net.UDPAddr
 }
 
 // The json stats we return for the backend
 type BackendStat struct {
-	Name      string `json:"name"`
-	Addr      string `json:"address"`
-	CheckAddr string `json:"check_address"`
-	Up        bool   `json:"up"`
-	Weight    int    `json:"weight"`
-	Sent      int64  `json:"sent"`
-	Rcvd      int64  `json:"received"`
-	Errors    int64  `json:"errors"`
-	Conns     int64  `json:"connections"`
-	Active    int64  `json:"active"`
-	CheckOK   int    `json:"check_success"`
-	CheckFail int    `json:"check_fail"`
+	Name       string `json:"name"`
+	Addr       string `json:"address"`
+	CheckAddr  string `json:"check_address"`
+	Up         bool   `json:"up"`
+	Weight     int    `json:"weight"`
+	Sent       int64  `json:"sent"`
+	Rcvd       int64  `json:"received"`
+	Errors     int64  `json:"errors"`
+	Conns      int64  `json:"connections"`
+	Active     int64  `json:"active"`
+	HTTPActive int64  `json:"http_active"`
+	CheckOK    int    `json:"check_success"`
+	CheckFail  int    `json:"check_fail"`
 }
 
-// The subset of fields we load and serialize for config.
-type BackendConfig struct {
-	Name      string `json:"name"`
-	Addr      string `json:"address"`
-	CheckAddr string `json:"check_address"`
-	Weight    int    `json:"weight"`
-}
-
-func NewBackend(cfg BackendConfig) *Backend {
+func NewBackend(cfg client.BackendConfig) *Backend {
 	b := &Backend{
 		Name:      cfg.Name,
 		Addr:      cfg.Addr,
 		CheckAddr: cfg.CheckAddr,
 		Weight:    cfg.Weight,
+		Network:   cfg.Network,
 		stopCheck: make(chan interface{}),
 	}
 
@@ -77,28 +78,42 @@ func NewBackend(cfg BackendConfig) *Backend {
 		b.Weight = 1
 	}
 
+	if b.Network == "" {
+		b.Network = "tcp"
+	}
+
+	switch b.Network {
+	case "udp", "udp4", "udp6":
+		var err error
+		b.udpAddr, err = net.ResolveUDPAddr(b.Network, b.Addr)
+		if err != nil {
+			log.Errorf("ERROR: %s", err.Error())
+			b.up = false
+		}
+	}
+
 	return b
 }
 
 // Copy the backend state into a BackendStat struct.
-// We probably don't need atomic loads for the live stats here.
 func (b *Backend) Stats() BackendStat {
 	b.Lock()
 	defer b.Unlock()
 
 	stats := BackendStat{
-		Name:      b.Name,
-		Addr:      b.Addr,
-		CheckAddr: b.CheckAddr,
-		Up:        b.up,
-		Weight:    b.Weight,
-		Sent:      b.Sent,
-		Rcvd:      b.Rcvd,
-		Errors:    b.Errors,
-		Conns:     b.Conns,
-		Active:    b.Active,
-		CheckOK:   b.checkOK,
-		CheckFail: b.checkFail,
+		Name:       b.Name,
+		Addr:       b.Addr,
+		CheckAddr:  b.CheckAddr,
+		Up:         b.up,
+		Weight:     b.Weight,
+		Sent:       atomic.LoadInt64(&b.Sent),
+		Rcvd:       atomic.LoadInt64(&b.Rcvd),
+		Errors:     atomic.LoadInt64(&b.Errors),
+		Conns:      atomic.LoadInt64(&b.Conns),
+		Active:     atomic.LoadInt64(&b.Active),
+		HTTPActive: atomic.LoadInt64(&b.HTTPActive),
+		CheckOK:    b.checkOK,
+		CheckFail:  b.checkFail,
 	}
 
 	return stats
@@ -112,11 +127,11 @@ func (b *Backend) Up() bool {
 }
 
 // Return the struct for marshaling into a json config
-func (b *Backend) Config() BackendConfig {
+func (b *Backend) Config() client.BackendConfig {
 	b.Lock()
 	defer b.Unlock()
 
-	cfg := BackendConfig{
+	cfg := client.BackendConfig{
 		Name:      b.Name,
 		Addr:      b.Addr,
 		CheckAddr: b.CheckAddr,
@@ -146,25 +161,35 @@ func (b *Backend) check() {
 
 	up := true
 	if c, e := net.DialTimeout("tcp", b.CheckAddr, b.dialTimeout); e == nil {
+		c.(*net.TCPConn).SetLinger(0)
 		c.Close()
 	} else {
+		log.Debug("Check error:", e)
 		up = false
 	}
 
 	b.Lock()
 	defer b.Unlock()
 	if up {
+		log.Debugf("Check OK for %s/%s", b.Name, b.CheckAddr)
 		b.fallCount = 0
 		b.riseCount++
 		b.checkOK++
 		if b.riseCount >= b.rise {
+			if !b.up {
+				log.Debugf("Marking backend %s Up", b.Name)
+			}
 			b.up = true
 		}
 	} else {
+		log.Debugf("Check failed for %s/%s", b.Name, b.CheckAddr)
 		b.riseCount = 0
 		b.fallCount++
 		b.checkFail++
 		if b.fallCount >= b.fall {
+			if b.up {
+				log.Debugf("Marking backend %s Down", b.Name)
+			}
 			b.up = false
 		}
 	}
@@ -176,6 +201,7 @@ func (b *Backend) healthCheck() {
 	for {
 		select {
 		case <-b.stopCheck:
+			log.Debug("Stopping backend", b.Name)
 			t.Stop()
 			return
 		case <-t.C:
@@ -189,48 +215,36 @@ type closeReader interface {
 	CloseRead() error
 }
 
-func (b *Backend) Proxy(conn net.Conn) {
+func (b *Backend) Proxy(srvConn, cliConn net.Conn) {
+	log.Debugf("Initiating proxy: %s/%s-%s/%s",
+		cliConn.RemoteAddr(),
+		cliConn.LocalAddr(),
+		srvConn.LocalAddr(),
+		srvConn.RemoteAddr(),
+	)
+
 	// Backend is a pointer receiver so we can get the address of the fields,
 	// but all updates will be done atomically.
-	// We still lock b in case of a config update while starting the Proxy.
-	b.Lock()
-	addr := b.Addr
-	dialTimeout := b.dialTimeout
-	// pointer values for atomic updates
-	conns := &b.Conns
-	active := &b.Active
-	errorCount := &b.Errors
-	bytesSent := &b.Sent
-	bytesRcvd := &b.Rcvd
-	b.Unlock()
 
-	c, err := net.DialTimeout("tcp", addr, dialTimeout)
-	if err != nil {
-		log.Println("error connecting to backend", err)
-		conn.Close()
-		atomic.AddInt64(errorCount, 1)
-		return
-	}
-
-	// TODO: might not be TCP? (this would panic)
-	bConn := &timeoutConn{
-		TCPConn:   c.(*net.TCPConn),
+	bConn := &shuttleConn{
+		TCPConn:   srvConn.(*net.TCPConn),
 		rwTimeout: b.rwTimeout,
+		read:      &b.Rcvd,
+		written:   &b.Sent,
 	}
-
-	// TODO: No way to force shutdown. Do we need it, or hsould we always just
+	// TODO: No way to force shutdown. Do we need it, or should we always just
 	// let a connection run out?
 
-	atomic.AddInt64(conns, 1)
-	atomic.AddInt64(active, 1)
-	defer atomic.AddInt64(active, -1)
+	atomic.AddInt64(&b.Conns, 1)
+	atomic.AddInt64(&b.Active, 1)
+	defer atomic.AddInt64(&b.Active, -1)
 
 	// channels to wait on close event
 	backendClosed := make(chan bool, 1)
 	clientClosed := make(chan bool, 1)
 
-	go broker(bConn, conn, clientClosed, bytesSent, errorCount)
-	go broker(conn, bConn, backendClosed, bytesRcvd, errorCount)
+	go broker(bConn, cliConn, clientClosed, &b.Sent, &b.Errors)
+	go broker(cliConn, bConn, backendClosed, &b.Rcvd, &b.Errors)
 
 	// wait for one half of the proxy to exit, then trigger a shutdown of the
 	// other half by calling CloseRead(). This will break the read loop in the
@@ -238,50 +252,25 @@ func (b *Backend) Proxy(conn net.Conn) {
 	var waitFor chan bool
 	select {
 	case <-clientClosed:
+		log.Debugf("Client %s/%s closed connection", cliConn.RemoteAddr(), cliConn.LocalAddr())
+		// the client closed first, so any more packets here are invalid, and
+		// we can SetLinger(0) to recycle the port faster.
+		bConn.TCPConn.SetLinger(0)
 		bConn.CloseRead()
 		waitFor = backendClosed
 	case <-backendClosed:
-		conn.(closeReader).CloseRead()
+		log.Debugf("Server %s/%s closed connection", srvConn.RemoteAddr(), srvConn.LocalAddr())
+		cliConn.(closeReader).CloseRead()
 		waitFor = clientClosed
 	}
 	// wait for the other connection to close
 	<-waitFor
 }
 
-// An io.Copy that updates the count during transfers.
-func countingCopy(dst io.Writer, src io.Reader, written *int64) (err error) {
-	buf := make([]byte, 32*1024)
-	for {
-		nr, er := src.Read(buf)
-		if nr > 0 {
-			nw, ew := dst.Write(buf[0:nr])
-			if nw > 0 {
-				atomic.AddInt64(written, int64(nw))
-			}
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er == io.EOF {
-			break
-		}
-		if er != nil {
-			err = er
-			break
-		}
-	}
-	return err
-}
-
 // This does the actual data transfer.
-// The broker only closes the Read side on error.
+// The broker only closes the Read side.
 func broker(dst, src net.Conn, srcClosed chan bool, written, errors *int64) {
-	err := countingCopy(dst, src, written)
+	_, err := io.Copy(dst, src)
 	if err != nil {
 		atomic.AddInt64(errors, 1)
 		log.Printf("Copy error: %s", err)
@@ -296,27 +285,51 @@ func broker(dst, src net.Conn, srcClosed chan bool, written, errors *int64) {
 // A net.Conn that sets a deadline for every read or write operation.
 // This will allow the server to close connections that are broken at the
 // network level.
-type timeoutConn struct {
+type shuttleConn struct {
 	*net.TCPConn
 	rwTimeout time.Duration
+
+	// count bytes read and written through this connection
+	written *int64
+	read    *int64
+
+	// decrement when closed
+	connected *int64
 }
 
-func (c *timeoutConn) Read(b []byte) (int, error) {
+func (c *shuttleConn) Read(b []byte) (int, error) {
 	if c.rwTimeout > 0 {
 		err := c.TCPConn.SetReadDeadline(time.Now().Add(c.rwTimeout))
 		if err != nil {
 			return 0, err
 		}
 	}
-	return c.TCPConn.Read(b)
+	n, err := c.TCPConn.Read(b)
+	atomic.AddInt64(c.read, int64(n))
+	return n, err
 }
 
-func (c *timeoutConn) Write(b []byte) (int, error) {
+func (c *shuttleConn) Write(b []byte) (int, error) {
 	if c.rwTimeout > 0 {
 		err := c.TCPConn.SetWriteDeadline(time.Now().Add(c.rwTimeout))
 		if err != nil {
 			return 0, err
 		}
 	}
-	return c.TCPConn.Write(b)
+
+	n, err := c.TCPConn.Write(b)
+	atomic.AddInt64(c.written, int64(n))
+	return n, err
 }
+
+func (c *shuttleConn) Close() error {
+	if c.connected != nil {
+		atomic.AddInt64(c.connected, -1)
+	}
+	return c.TCPConn.Close()
+}
+
+// Empty function to override the ReadFrom in *net.TCPConn
+// io.Copy will attempt to use ReadFrom when it can, but there's no bennefit
+// for a TCPConn->TCPConn, and it prevents us from collecting Read/Write stats.
+func (c *shuttleConn) ReadFrom() {}
