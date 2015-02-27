@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/litl/galaxy/log"
-	"github.com/litl/galaxy/utils"
 	"github.com/litl/shuttle/client"
 )
 
@@ -425,9 +424,13 @@ func (s *ServiceRegistry) RemoveService(name string) error {
 
 			removeVhost := true
 			for _, service := range s.svcs {
-				if utils.StringInSlice(host, service.VirtualHosts) {
-					removeVhost = false
-					break
+				for _, h := range service.VirtualHosts {
+					if host == h {
+						// FIXME: is this still correct? NOT TESTED!
+						// vhost exists in another service, so leave it
+						removeVhost = false
+						break
+					}
 				}
 			}
 			if removeVhost {
