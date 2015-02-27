@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/litl/galaxy/log"
-	"github.com/litl/galaxy/utils"
 	"github.com/litl/shuttle/client"
 )
 
@@ -172,7 +171,7 @@ func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 	}
 
 	invalidPorts := []string{
-		// FIXME: lookup bound addresses soume other way.  We may have multiple
+		// FIXME: lookup bound addresses some other way.  We may have multiple
 		//        http listeners, as well as all listening Services.
 		// listenAddr[strings.Index(listenAddr, ":")+1:],
 		adminListenAddr[strings.Index(adminListenAddr, ":")+1:],
@@ -425,9 +424,13 @@ func (s *ServiceRegistry) RemoveService(name string) error {
 
 			removeVhost := true
 			for _, service := range s.svcs {
-				if utils.StringInSlice(host, service.VirtualHosts) {
-					removeVhost = false
-					break
+				for _, h := range service.VirtualHosts {
+					if host == h {
+						// FIXME: is this still correct? NOT TESTED!
+						// vhost exists in another service, so leave it
+						removeVhost = false
+						break
+					}
 				}
 			}
 			if removeVhost {

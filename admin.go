@@ -66,8 +66,6 @@ func postConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update a service and/or backends.
-// Adding a `backends_only` query parameter will prevent the service from being
-// shutdown and replaced if the ServiceConfig is not identical..
 func postService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
