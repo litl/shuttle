@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/litl/galaxy/log"
-	"github.com/litl/galaxy/shuttle/client"
 	"github.com/litl/galaxy/utils"
+	"github.com/litl/shuttle/client"
 )
 
 var (

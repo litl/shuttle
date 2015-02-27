@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/litl/galaxy/log"
-	"github.com/litl/galaxy/shuttle/client"
+	"github.com/litl/shuttle/client"
 )
 
 type Backend struct {

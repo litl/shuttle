@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/litl/galaxy/shuttle/client"
+	"github.com/litl/shuttle/client"
 )
 
 var (

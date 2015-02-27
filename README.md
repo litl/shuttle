@@ -1,8 +1,8 @@
 shuttle TCP Proxy
 =======
 
-Shuttle is a TCP proxy and load balancer, which can be updated live via an HTTP
-interface.
+Shuttle is a proxy and load balancer, which can be updated live via an HTTP
+interface. It can Proxy TCP, UDP, and HTTP via virtual hosts.
 
 ## Usage
 
