@@ -4,7 +4,7 @@ import (
 	"flag"
 	"sync"
 
-	"github.com/litl/galaxy/log"
+	"github.com/litl/shuttle/log"
 )
 
 var (

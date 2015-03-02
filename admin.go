@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/litl/galaxy/log"
 	"github.com/litl/shuttle/client"
+	"github.com/litl/shuttle/log"
 
 	"github.com/gorilla/mux"
 )

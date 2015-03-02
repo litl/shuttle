@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/litl/galaxy/log"
 	"github.com/litl/shuttle/client"
+	"github.com/litl/shuttle/log"
 	. "gopkg.in/check.v1"
 )
 

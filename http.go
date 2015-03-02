@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/litl/galaxy/log"
+	"github.com/litl/shuttle/log"
 )
 
 var (
