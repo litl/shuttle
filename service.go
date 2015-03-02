@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/litl/galaxy/log"
 	"github.com/litl/shuttle/client"
+	"github.com/litl/shuttle/log"
 )
 
 var (

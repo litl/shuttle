@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/litl/galaxy/log"
+	"github.com/litl/shuttle/log"
 )
 
 // onExitFlushLoop is a callback set by tests to detect the state of the
