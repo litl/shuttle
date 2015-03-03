@@ -1,8 +1,26 @@
-shuttle TCP Proxy
+shuttle - Dynamic HTTP(S)/TCP/UDP Service Proxy 
 =======
 
 Shuttle is a proxy and load balancer, which can be updated live via an HTTP
-interface. It can Proxy TCP, UDP, and HTTP via virtual hosts.
+interface. It can Proxy TCP, UDP, and HTTP(S) via virtual hosts.
+
+## Features
+ - TCP/UDP/HTTP/HTTPS (SNI) Proxying
+ - Round robin/Least Connection/Weighted Load Balancing
+ - Backend Health Checks
+ - HTTP API for dynamic updating and querying
+ - Stats API
+ - HTTP(S) Virtual Host Routing
+ - Configuration HTTP Error Pages
+ - Optional proxy config state saving
+ - Optional file config
+
+## Install
+
+```
+$ wget https://github.com/litl/shuttle/releases/download/v0.1.0/shuttle-linux-amd64-v0.1.0.tar.gz
+$ tar xvzv shuttle-linux-amd64-v0.1.0.tar.gz
+```
 
 ## Usage
 
@@ -58,3 +76,7 @@ continue to run until the connection is closed.
 - Protocol bridging? e.g. `TCP<->unix`, `UDP->TCP`?!
 - Better logging
 - Remove all dependency on galaxy (galaxy/log?)
+
+## License
+
+MIT
