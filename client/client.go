@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -18,6 +19,9 @@ const (
 
 	// Default timeout in milliseconds for clients and server connections
 	DefaultTimeout = 2000
+
+	// Default interval in milliseconds between health checks
+	DefaultCheckInterval = 2000
 
 	// Default network connections are TCP
 	DefaultNet = "tcp"
@@ -84,6 +88,7 @@ type Config struct {
 
 // Marshal returns an entire config as a json []byte.
 func (c *Config) Marshal() []byte {
+	sort.Sort(serviceSlice(c.Services))
 	js, _ := json.Marshal(c)
 	return js
 }
@@ -115,23 +120,20 @@ type BackendConfig struct {
 	Weight int `json:"weight"`
 }
 
-func (b BackendConfig) Equal(other BackendConfig) bool {
-	if other.Weight == 0 {
-		other.Weight = DefaultWeight
-	}
-
+// return a copy of the BackendConfig with default values set
+func (b BackendConfig) setDefaults() BackendConfig {
 	if b.Weight == 0 {
 		b.Weight = DefaultWeight
 	}
-
 	if b.Network == "" {
 		b.Network = DefaultNet
 	}
+	return b
+}
 
-	if other.Network == "" {
-		other.Network = DefaultNet
-	}
-
+func (b BackendConfig) Equal(other BackendConfig) bool {
+	b = b.setDefaults()
+	other = other.setDefaults()
 	return b == other
 }
 
@@ -143,6 +145,19 @@ func (b *BackendConfig) Marshal() []byte {
 func (b *BackendConfig) String() string {
 	return string(b.Marshal())
 }
+
+// keep things sorted for easy viewing and comparison
+type backendSlice []BackendConfig
+
+func (p backendSlice) Len() int           { return len(p) }
+func (p backendSlice) Less(i, j int) bool { return p[i].Name < p[j].Name }
+func (p backendSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+type serviceSlice []ServiceConfig
+
+func (p serviceSlice) Len() int           { return len(p) }
+func (p serviceSlice) Less(i, j int) bool { return p[i].Name < p[j].Name }
+func (p serviceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Subset of service fields needed for configuration.
 type ServiceConfig struct {
@@ -199,49 +214,40 @@ type ServiceConfig struct {
 	Backends []BackendConfig `json:"backends,omitempty"`
 }
 
+// Return a copy  of ServiceConfig with any unset fields to their default
+// values
+func (s ServiceConfig) setDefaults() ServiceConfig {
+	if s.Balance == "" {
+		s.Balance = DefaultBalance
+	}
+	if s.CheckInterval == 0 {
+		s.CheckInterval = DefaultCheckInterval
+	}
+	if s.Rise == 0 {
+		s.Rise = DefaultRise
+	}
+	if s.Fall == 0 {
+		s.Fall = DefaultFall
+	}
+	if s.Network == "" {
+		s.Network = DefaultNet
+	}
+	return s
+}
+
 // Compare a service's settings, ignoring individual backends.
 func (s ServiceConfig) Equal(other ServiceConfig) bool {
 	// just remove the backends and compare the rest
 	s.Backends = nil
 	other.Backends = nil
 
-	// FIXME: Normalize default in one place!
+	s = s.setDefaults()
+	other = other.setDefaults()
 
-	if s.Balance != other.Balance {
-		if s.Balance == "" && other.Balance == RoundRobin {
-			other.Balance = ""
-		} else if s.Balance == RoundRobin && other.Balance == "" {
-			other.Balance = RoundRobin
-		}
-	}
+	sort.Strings(s.VirtualHosts)
+	sort.Strings(s.VirtualHosts)
 
-	if s.CheckInterval == 0 {
-		s.CheckInterval = DefaultTimeout
-	}
-	if other.CheckInterval == 0 {
-		other.CheckInterval = DefaultTimeout
-	}
-	if s.Rise == 0 {
-		s.Rise = DefaultRise
-	}
-	if other.Rise == 0 {
-		other.Rise = DefaultRise
-	}
-	if s.Fall == 0 {
-		s.Fall = DefaultFall
-	}
-	if other.Fall == 0 {
-		other.Fall = DefaultFall
-	}
-
-	if s.Network == "" {
-		s.Network = DefaultNet
-	}
-
-	// We handle backends separately
-	s.Backends = nil
-	other.Backends = nil
-
+	// FIXME: ignoring VirtualHosts and ErrorPages equality
 	return reflect.DeepEqual(s, other)
 }
 
@@ -255,23 +261,23 @@ func (s ServiceConfig) DeepEqual(other ServiceConfig) bool {
 		return false
 	}
 
-	for _, a := range s.Backends {
-	NEXT:
-		for _, b := range other.Backends {
-			if a.Name == b.Name {
-				if a.Equal(b) {
-					break NEXT
-				} else {
-					return false
-				}
-			}
-		}
+	if len(s.Backends) != len(other.Backends) {
+		return false
 	}
 
+	sort.Sort(backendSlice(s.Backends))
+	sort.Sort(backendSlice(other.Backends))
+
+	for i := range s.Backends {
+		if !s.Backends[i].Equal(other.Backends[i]) {
+			return false
+		}
+	}
 	return true
 }
 
 func (b *ServiceConfig) Marshal() []byte {
+	sort.Sort(backendSlice(b.Backends))
 	js, _ := json.Marshal(b)
 	return js
 }

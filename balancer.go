@@ -10,7 +10,7 @@ import (
 // initial connections fails.
 
 // RR is always weighted.
-// we don't reduce the weight, we just distrubute exactly "Weight" calls in
+// we don't reduce the weight, we just distribute exactly "Weight" calls in
 // a row
 func (s *Service) roundRobin() []*Backend {
 	s.Lock()

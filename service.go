@@ -155,7 +155,8 @@ func NewService(cfg client.ServiceConfig) *Service {
 	return s
 }
 
-// Update only fields that apply to all backends and connections
+// Update the defaults on the running service from a sample config. Only
+// fields that apply to all backends and connections will be updated.
 func (s *Service) UpdateDefaults(cfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()

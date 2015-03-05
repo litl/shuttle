@@ -148,6 +148,7 @@ func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 
 	// Set globals
 	//FIXME: we might need to unset something
+
 	if cfg.Balance != "" {
 		s.cfg.Balance = cfg.Balance
 	}
@@ -180,7 +181,6 @@ func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 	errors := &multiError{}
 
 	for _, svc := range cfg.Services {
-
 		for _, port := range invalidPorts {
 			if strings.HasSuffix(svc.Addr, port) {
 				// TODO: report conflicts between service listeners
@@ -247,7 +247,7 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 		return ErrDuplicateService
 	}
 
-	setServiceDefaults(&svcCfg, s.cfg)
+	s.setServiceDefaults(&svcCfg)
 
 	service := NewService(svcCfg)
 	err := service.start()
@@ -547,27 +547,28 @@ func (s *ServiceRegistry) String() string {
 	return string(marshal(s.Config()))
 }
 
-// set any missing defaults on a Service
-func setServiceDefaults(svc *client.ServiceConfig, def client.Config) {
-	if svc.Balance == "" && def.Balance != "" {
-		svc.Balance = def.Balance
+// set any missing defaults on a ServiceConfig
+// ServiceRegistry *must* be locked
+func (s *ServiceRegistry) setServiceDefaults(svc *client.ServiceConfig) {
+	if svc.Balance == "" && s.cfg.Balance != "" {
+		svc.Balance = s.cfg.Balance
 	}
-	if svc.CheckInterval == 0 && def.CheckInterval != 0 {
-		svc.CheckInterval = def.CheckInterval
+	if svc.CheckInterval == 0 && s.cfg.CheckInterval != 0 {
+		svc.CheckInterval = s.cfg.CheckInterval
 	}
-	if svc.Fall == 0 && def.Fall != 0 {
-		svc.Fall = def.Fall
+	if svc.Fall == 0 && s.cfg.Fall != 0 {
+		svc.Fall = s.cfg.Fall
 	}
-	if svc.Rise == 0 && def.Rise != 0 {
-		svc.Rise = def.Rise
+	if svc.Rise == 0 && s.cfg.Rise != 0 {
+		svc.Rise = s.cfg.Rise
 	}
-	if svc.ClientTimeout == 0 && def.ClientTimeout != 0 {
-		svc.ClientTimeout = def.ClientTimeout
+	if svc.ClientTimeout == 0 && s.cfg.ClientTimeout != 0 {
+		svc.ClientTimeout = s.cfg.ClientTimeout
 	}
-	if svc.ServerTimeout == 0 && def.ServerTimeout != 0 {
-		svc.ServerTimeout = def.ServerTimeout
+	if svc.ServerTimeout == 0 && s.cfg.ServerTimeout != 0 {
+		svc.ServerTimeout = s.cfg.ServerTimeout
 	}
-	if svc.DialTimeout == 0 && def.DialTimeout != 0 {
-		svc.DialTimeout = def.DialTimeout
+	if svc.DialTimeout == 0 && s.cfg.DialTimeout != 0 {
+		svc.DialTimeout = s.cfg.DialTimeout
 	}
 }
