@@ -21,7 +21,7 @@ const (
 	DefaultTimeout = 2000
 
 	// Default interval in milliseconds between health checks
-	DefaultCheckInterval = 2000
+	DefaultCheckInterval = 5000
 
 	// Default network connections are TCP
 	DefaultNet = "tcp"
