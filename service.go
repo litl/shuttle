@@ -126,17 +126,17 @@ func NewService(cfg client.ServiceConfig) *Service {
 	s.httpProxy.OnResponse = []ProxyCallback{logProxyRequest, s.errStats, s.errorPages.CheckResponse}
 
 	if s.CheckInterval == 0 {
-		s.CheckInterval = 2000
+		s.CheckInterval = client.DefaultCheckInterval
 	}
 	if s.Rise == 0 {
-		s.Rise = 2
+		s.Rise = client.DefaultRise
 	}
 	if s.Fall == 0 {
-		s.Fall = 2
+		s.Fall = client.DefaultFall
 	}
 
 	if s.Network == "" {
-		s.Network = "tcp"
+		s.Network = client.DefaultNet
 	}
 
 	for _, b := range cfg.Backends {
@@ -144,18 +144,22 @@ func NewService(cfg client.ServiceConfig) *Service {
 	}
 
 	switch cfg.Balance {
-	case "RR", "":
+	case client.RoundRobin:
 		s.next = s.roundRobin
-	case "LC":
+	case client.LeastConn:
 		s.next = s.leastConn
 	default:
-		log.Printf("invalid balancing algorithm '%s'", cfg.Balance)
+		if cfg.Balance != "" {
+			log.Warnf("invalid balancing algorithm '%s'", cfg.Balance)
+		}
+		s.next = s.roundRobin
 	}
 
 	return s
 }
 
-// Update only fields that apply to all backends and connections
+// Update the defaults on the running service from a sample config. Only
+// fields that apply to all backends and connections will be updated.
 func (s *Service) UpdateDefaults(cfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
