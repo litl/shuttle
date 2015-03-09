@@ -147,7 +147,8 @@ type ServiceRegistry struct {
 func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 
 	// Set globals
-	//TODO: we might need to unset something
+	// TODO: we might need to unset something
+	// TODO: this should remove services and backends to match the submitted config
 
 	if cfg.Balance != "" {
 		s.cfg.Balance = cfg.Balance
