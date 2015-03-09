@@ -49,7 +49,8 @@ type Config struct {
 	// CheckInterval is in time in milliseconds between service health checks.
 	CheckInterval int `json:"check_interval"`
 
-	// Fall is the number of failed health checks before a service is marked.
+	// Fall is the number of failed health checks before a service is marked
+	// down.
 	Fall int `json:"fall"`
 
 	// Rise is the number of successful health checks before a down service is
