@@ -2,8 +2,8 @@ shuttle - Dynamic HTTP(S)/TCP/UDP Service Proxy
 =======
 
 ![latest v0.1.0](https://img.shields.io/badge/latest-v0.1.0-green.svg?style=flat)
+[![Build Status](https://travis-ci.org/litl/shuttle.svg?branch=master)](https://travis-ci.org/litl/shuttle)
 ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)
-
 
 Shuttle is a proxy and load balancer, which can be updated live via an HTTP
 interface. It can Proxy TCP, UDP, and HTTP(S) via virtual hosts.
