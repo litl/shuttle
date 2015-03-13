@@ -41,6 +41,7 @@ func init() {
 	configFS.IntVar(&cfg.ClientTimeout, "client-timeout", 0, "innactivity timeout for client connections")
 	configFS.IntVar(&cfg.ServerTimeout, "server-timeout", 0, "innactivity timeout for server connections")
 	configFS.IntVar(&cfg.DialTimeout, "dial-timeout", 0, "timeout for dialing new connections connections")
+	configFS.BoolVar(&cfg.HTTPSRedirect, "https-redirect", false, "rediect all http requests to https")
 
 	serviceFS.StringVar(&serviceCfg.Addr, "address", "", "service listening address")
 	serviceFS.StringVar(&serviceCfg.Network, "network", "", "service network type")
@@ -51,6 +52,7 @@ func init() {
 	serviceFS.IntVar(&serviceCfg.ClientTimeout, "client-timeout", 0, "innactivity timeout for client connections")
 	serviceFS.IntVar(&serviceCfg.ServerTimeout, "server-timeout", 0, "innactivity timeout for server connections")
 	serviceFS.IntVar(&serviceCfg.DialTimeout, "dial-timeout", 0, "timeout for dialing new connections connections")
+	serviceFS.BoolVar(&serviceCfg.HTTPSRedirect, "https-redirect", false, "rediect all http requests to https")
 	serviceFS.Var(&vhosts, "vhost", "virtual host name. may be set multiple times")
 	serviceFS.Var(&errorPages, "error-page", "location for http error code formatted as 'http://example.com/|500,503'. may be set multiple times")
 
