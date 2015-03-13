@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 
 	"github.com/litl/shuttle/client"
@@ -58,7 +59,6 @@ func (s *HTTPSuite) SetUpSuite(c *C) {
 
 	httpsRouter := NewHostRouter(httpsServer)
 	httpsRouter.Scheme = "https"
-	httpsRouter.SSLOnly = sslOnly
 
 	httpsReady := make(chan bool)
 	go httpsRouter.Start(httpsReady)
@@ -657,4 +657,60 @@ func (s *HTTPSuite) TestHTTPSRouter(c *C) {
 	checkHTTP("https://vhost2.test:"+s.httpsPort+"/addr", "vhost2.test", srv2.addr, 200, c)
 	checkHTTP("https://alt.vhost2.test:"+s.httpsPort+"/addr", "alt.vhost2.test", srv2.addr, 200, c)
 	checkHTTP("https://star.vhost2.test:"+s.httpsPort+"/addr", "star.vhost2.test", srv2.addr, 200, c)
+}
+
+// Verify that Settting HTTPSRedirect on a service works as expected for https
+// and for X-Forwarded-Proto:https.
+func (s *HTTPSuite) TestHTTPSRedirect(c *C) {
+	srv1 := s.backendServers[0]
+
+	svcCfgOne := client.ServiceConfig{
+		Name:          "VHostTest1",
+		Addr:          "127.0.0.1:9000",
+		HTTPSRedirect: true,
+		VirtualHosts:  []string{"vhost1.test", "alt.vhost1.test", "star.vhost1.test"},
+		Backends: []client.BackendConfig{
+			{Addr: srv1.addr},
+		},
+	}
+
+	err := Registry.AddService(svcCfgOne)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: localDial,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return fmt.Errorf("redirected")
+		},
+	}
+
+	// this should redirect to https
+	reqHTTP, _ := http.NewRequest("HEAD", "http://localhost:"+s.httpPort+"/addr", nil)
+	reqHTTP.Host = "vhost1.test"
+
+	resp, err := client.Do(reqHTTP)
+	if err != nil {
+		if err, ok := err.(*url.Error); ok {
+			if err.Err.Error() != "redirected" {
+				c.Fatal(err)
+			}
+		} else {
+			c.Fatal(err)
+		}
+	}
+	c.Assert(resp.StatusCode, Equals, http.StatusMovedPermanently)
+
+	// this should be OK
+	reqHTTP.Header = map[string][]string{
+		"X-Forwarded-Proto": {"https"},
+	}
+	resp, err = client.Do(reqHTTP)
+	if err != nil {
+		c.Fatal(err)
+	}
+	c.Assert(resp.StatusCode, Equals, http.StatusOK)
 }

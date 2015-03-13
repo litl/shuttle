@@ -172,6 +172,11 @@ func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 		s.cfg.DialTimeout = cfg.DialTimeout
 	}
 
+	// apply the https rediect flag
+	if httpsRedirect {
+		s.cfg.HTTPSRedirect = true
+	}
+
 	invalidPorts := []string{
 		// FIXME: lookup bound addresses some other way.  We may have multiple
 		//        http listeners, as well as all listening Services.
@@ -275,6 +280,7 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 // Replacing a configuration will shutdown the existing service, and start a
 // new one, which will cause the listening socket to be temporarily
 // unavailable.
+// FIXME: this doesn't update service configuration options!
 func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
@@ -571,5 +577,8 @@ func (s *ServiceRegistry) setServiceDefaults(svc *client.ServiceConfig) {
 	}
 	if svc.DialTimeout == 0 && s.cfg.DialTimeout != 0 {
 		svc.DialTimeout = s.cfg.DialTimeout
+	}
+	if s.cfg.HTTPSRedirect {
+		svc.HTTPSRedirect = true
 	}
 }

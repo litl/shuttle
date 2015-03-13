@@ -69,6 +69,11 @@ type Config struct {
 	// backend service, including name resolution.
 	DialTimeout int `json:"connect_timeout"`
 
+	// HTTPSRedirect when set to true, redirects non-https request to https on
+	// all services. The request may either have Scheme set to 'https',  or
+	// have an "X-Forwarded-Proto: https" header.
+	HTTPSRedirect bool `json:"https-redirect"`
+
 	// Services is a slice of ServiceConfig for each service. A service
 	// corresponds to one listening connection, and a number of backends to
 	// proxy.
@@ -188,6 +193,11 @@ type ServiceConfig struct {
 	// DialTimeout is the timeout in milliseconds for connections to the
 	// backend service, including name resolution.
 	DialTimeout int `json:"connect_timeout"`
+
+	// HTTPSRedirect when set to true, redirects non-https request to https. The
+	// request may either have Scheme set to 'https',  or have an
+	// "X-Forwarded-Proto: https" header.
+	HTTPSRedirect bool `json:"https-redirect"`
 
 	// Virtualhosts is a set of virtual hostnames for which this service should
 	// handle HTTP requests.

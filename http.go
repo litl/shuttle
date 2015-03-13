@@ -29,9 +29,6 @@ type HostRouter struct {
 	// the http frontend
 	server *http.Server
 
-	// automatically redirect to https
-	SSLOnly bool
-
 	// HTTP/HTTPS
 	Scheme string
 
@@ -52,15 +49,6 @@ func (r *HostRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	reqId := genId()
 	req.Header.Set("X-Request-Id", reqId)
 	w.Header().Add("X-Request-Id", reqId)
-
-	if r.SSLOnly {
-		if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") != "https" {
-			//TODO: verify RequestURI
-			redirLoc := "https://" + req.Host + req.RequestURI
-			http.Redirect(w, req, redirLoc, http.StatusMovedPermanently)
-			return
-		}
-	}
 
 	var err error
 	host := req.Host
@@ -137,7 +125,6 @@ func startHTTPServer(wg *sync.WaitGroup) {
 	}
 
 	httpRouter = NewHostRouter(httpServer)
-	httpRouter.SSLOnly = sslOnly
 
 	httpRouter.Start(nil)
 }
@@ -224,7 +211,6 @@ func startHTTPSServer(wg *sync.WaitGroup) {
 
 	httpRouter = NewHostRouter(httpsServer)
 	httpRouter.Scheme = "https"
-	httpRouter.SSLOnly = sslOnly
 
 	httpRouter.Start(nil)
 }

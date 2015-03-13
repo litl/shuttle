@@ -24,6 +24,7 @@ type Service struct {
 	sync.Mutex
 	Name          string
 	Addr          string
+	HTTPSRedirect bool
 	VirtualHosts  []string
 	Backends      []*Backend
 	Balance       string
@@ -97,6 +98,7 @@ func NewService(cfg client.ServiceConfig) *Service {
 		CheckInterval: cfg.CheckInterval,
 		Fall:          cfg.Fall,
 		Rise:          cfg.Rise,
+		HTTPSRedirect: cfg.HTTPSRedirect,
 		VirtualHosts:  cfg.VirtualHosts,
 		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Millisecond,
 		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Millisecond,
@@ -228,6 +230,7 @@ func (s *Service) Config() client.ServiceConfig {
 		Name:          s.Name,
 		Addr:          s.Addr,
 		VirtualHosts:  s.VirtualHosts,
+		HTTPSRedirect: s.HTTPSRedirect,
 		Balance:       s.Balance,
 		CheckInterval: s.CheckInterval,
 		Fall:          s.Fall,
@@ -551,6 +554,15 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&s.HTTPConns, 1)
 	atomic.AddInt64(&s.HTTPActive, 1)
 	defer atomic.AddInt64(&s.HTTPActive, -1)
+
+	if s.HTTPSRedirect {
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") != "https" {
+			//TODO: verify RequestURI
+			redirLoc := "https://" + r.Host + r.RequestURI
+			http.Redirect(w, r, redirLoc, http.StatusMovedPermanently)
+			return
+		}
+	}
 
 	s.httpProxy.ServeHTTP(w, r, s.NextAddrs())
 }

@@ -26,8 +26,8 @@ var (
 	// Debug logging
 	debug bool
 
-	// Redirect to SSL endpoint
-	sslOnly bool
+	// Redirect to HTTPS endpoint
+	httpsRedirect bool
 
 	// version flags
 	version      bool
@@ -47,8 +47,8 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "verbose logging")
 	flag.BoolVar(&version, "v", false, "display version")
 
-	// FIXME: we may only want this for one HTTPRouter
-	flag.BoolVar(&sslOnly, "sslOnly", false, "require SSL")
+	flag.BoolVar(&httpsRedirect, "https-redirect", false, "redirect all http vhost requests to https")
+	flag.BoolVar(&httpsRedirect, "sslOnly", false, "require https (deprecated)")
 
 	flag.Parse()
 }
