@@ -592,13 +592,16 @@ func newTimeoutListener(netw, addr string, timeout time.Duration) (net.Listener,
 }
 
 func (l *timeoutListener) Accept() (net.Conn, error) {
-	conn, err := l.TCPListener.Accept()
+	conn, err := l.TCPListener.AcceptTCP()
 	if err != nil {
 		return nil, err
 	}
 
+	conn.SetKeepAlive(true)
+	conn.SetKeepAlivePeriod(3 * time.Minute)
+
 	sc := &shuttleConn{
-		TCPConn:   conn.(*net.TCPConn),
+		TCPConn:   conn,
 		rwTimeout: l.rwTimeout,
 		read:      &l.read,
 		written:   &l.written,
