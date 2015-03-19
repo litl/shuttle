@@ -254,6 +254,7 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 	}
 
 	s.setServiceDefaults(&svcCfg)
+	svcCfg = svcCfg.SetDefaults()
 
 	service := NewService(svcCfg)
 	err := service.start()
@@ -280,7 +281,6 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 // Replacing a configuration will shutdown the existing service, and start a
 // new one, which will cause the listening socket to be temporarily
 // unavailable.
-// FIXME: this doesn't update service configuration options!
 func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
@@ -292,11 +292,12 @@ func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 		return ErrNoService
 	}
 
-	if err := service.UpdateDefaults(newCfg); err != nil {
+	currentCfg := service.Config()
+	newCfg.Merge(currentCfg)
+
+	if err := service.UpdateConfig(newCfg); err != nil {
 		return err
 	}
-
-	currentCfg := service.Config()
 
 	// Lots of looping here (including fetching the Config, but the cardinality
 	// of Backends shouldn't be very large, and the default RoundRobin balancing
@@ -554,7 +555,7 @@ func (s *ServiceRegistry) String() string {
 	return string(marshal(s.Config()))
 }
 
-// set any missing defaults on a ServiceConfig
+// set any missing defaults on a ServiceConfig on a new Service.
 // ServiceRegistry *must* be locked
 func (s *ServiceRegistry) setServiceDefaults(svc *client.ServiceConfig) {
 	if svc.Balance == "" && s.cfg.Balance != "" {

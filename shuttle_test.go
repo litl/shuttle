@@ -395,6 +395,42 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 	}
 }
 
+// check that all updatable fields can be updated
+func (s *BasicSuite) TestUpdateServiceConfig(c *C) {
+	svcCfg := client.ServiceConfig{
+		Name: "Update",
+		Addr: "127.0.0.1:9324",
+	}
+
+	if err := Registry.AddService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	svc := Registry.GetService("Update")
+	if svc == nil {
+		c.Fatal(ErrNoService)
+	}
+
+	svcCfg.ServerTimeout = 1234
+	svcCfg.HTTPSRedirect = true
+	svcCfg.Fall = 5
+	svcCfg.Rise = 6
+	svcCfg.Balance = "LC"
+
+	// Now update the service
+	if err := Registry.UpdateService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	svc = Registry.GetService("Update")
+	if svc == nil {
+		c.Fatal(ErrNoService)
+	}
+	c.Assert(svc.ServerTimeout, Equals, 1234*time.Millisecond)
+	c.Assert(svc.HTTPSRedirect, Equals, true)
+	c.Assert(svc.Balance, Equals, "LC")
+}
+
 // Add backends and run response tests in parallel
 func (s *BasicSuite) TestParallel(c *C) {
 	var wg sync.WaitGroup
