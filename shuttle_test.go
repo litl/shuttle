@@ -353,7 +353,7 @@ func (s *BasicSuite) TestRemoveBackend(c *C) {
 	c.Assert(err, Equals, ErrNoBackend)
 }
 
-func (s *BasicSuite) TestUpdateService(c *C) {
+func (s *BasicSuite) TestInvalidUpdateService(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name: "Update",
 		Addr: "127.0.0.1:9324",
@@ -368,37 +368,36 @@ func (s *BasicSuite) TestUpdateService(c *C) {
 		c.Fatal(ErrNoService)
 	}
 
-	svcCfg = client.ServiceConfig{
-		Name: "Update",
-		Addr: "127.0.0.1:9425",
-	}
+	svcCfg.Addr = "127.0.0.1:9425"
 
-	// Make sure we can't add it through AddService
+	// Make sure we can't add the same service again
 	if err := Registry.AddService(svcCfg); err == nil {
 		c.Fatal(err)
 	}
 
-	// Now update the service
-	if err := Registry.UpdateService(svcCfg); err != nil {
+	// the update should fail, because it would require a new listener
+	if err := Registry.UpdateService(svcCfg); err == nil {
 		c.Fatal(err)
 	}
 
-	svc = Registry.GetService("Update")
-	if svc == nil {
-		c.Fatal(ErrNoService)
+	// change the addres back, and try to update ClientTimeout
+	svcCfg.Addr = "127.0.0.1:9324"
+	svcCfg.ClientTimeout = 1234
+
+	// the update should fail, because it would require a new listener
+	if err := Registry.UpdateService(svcCfg); err == nil {
+		c.Fatal(err)
 	}
-	// Addr cannot be updated.  Ensure it's the same as before.
-	c.Assert(svc.Addr, Equals, "127.0.0.1:9324")
 
 	if err := Registry.RemoveService("Update"); err != nil {
 		c.Fatal(err)
 	}
 }
 
-// check that all updatable fields can be updated
-func (s *BasicSuite) TestUpdateServiceConfig(c *C) {
+// check valid service updates
+func (s *BasicSuite) TestUpdateService(c *C) {
 	svcCfg := client.ServiceConfig{
-		Name: "Update",
+		Name: "Update2",
 		Addr: "127.0.0.1:9324",
 	}
 
@@ -406,7 +405,7 @@ func (s *BasicSuite) TestUpdateServiceConfig(c *C) {
 		c.Fatal(err)
 	}
 
-	svc := Registry.GetService("Update")
+	svc := Registry.GetService("Update2")
 	if svc == nil {
 		c.Fatal(ErrNoService)
 	}
@@ -417,18 +416,24 @@ func (s *BasicSuite) TestUpdateServiceConfig(c *C) {
 	svcCfg.Rise = 6
 	svcCfg.Balance = "LC"
 
-	// Now update the service
+	// Now update the service for real
 	if err := Registry.UpdateService(svcCfg); err != nil {
 		c.Fatal(err)
 	}
 
-	svc = Registry.GetService("Update")
+	svc = Registry.GetService("Update2")
 	if svc == nil {
 		c.Fatal(ErrNoService)
 	}
 	c.Assert(svc.ServerTimeout, Equals, 1234*time.Millisecond)
 	c.Assert(svc.HTTPSRedirect, Equals, true)
+	c.Assert(svc.Fall, Equals, 5)
+	c.Assert(svc.Rise, Equals, 6)
 	c.Assert(svc.Balance, Equals, "LC")
+
+	if err := Registry.RemoveService("Update2"); err != nil {
+		c.Fatal(err)
+	}
 }
 
 // Add backends and run response tests in parallel

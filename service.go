@@ -18,6 +18,8 @@ var (
 		svcs:   make(map[string]*Service),
 		vhosts: make(map[string]*VirtualHost),
 	}
+
+	ErrInvalidServiceUpdate = fmt.Errorf("configuration requires a new service")
 )
 
 type Service struct {
@@ -165,10 +167,17 @@ func (s *Service) UpdateConfig(cfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
 
+	if s.ClientTimeout != time.Duration(cfg.ClientTimeout)*time.Millisecond {
+		return ErrInvalidServiceUpdate
+	}
+
+	if s.Addr != cfg.Addr {
+		return ErrInvalidServiceUpdate
+	}
+
 	s.CheckInterval = cfg.CheckInterval
 	s.Fall = cfg.Fall
 	s.Rise = cfg.Rise
-	//TODO: can't update ClientTimeout without restart listener
 	s.ServerTimeout = time.Duration(cfg.ServerTimeout) * time.Millisecond
 	s.DialTimeout = time.Duration(cfg.DialTimeout) * time.Millisecond
 	s.HTTPSRedirect = cfg.HTTPSRedirect

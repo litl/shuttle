@@ -555,8 +555,8 @@ func (s *ServiceRegistry) String() string {
 	return string(marshal(s.Config()))
 }
 
-// set any missing defaults on a ServiceConfig on a new Service.
-// ServiceRegistry *must* be locked
+// set any missing global configuration on a new ServiceConfig.
+// ServiceRegistry *must* be locked.
 func (s *ServiceRegistry) setServiceDefaults(svc *client.ServiceConfig) {
 	if svc.Balance == "" && s.cfg.Balance != "" {
 		svc.Balance = s.cfg.Balance
