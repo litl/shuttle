@@ -115,7 +115,7 @@ type BackendConfig struct {
 }
 
 // return a copy of the BackendConfig with default values set
-func (b BackendConfig) setDefaults() BackendConfig {
+func (b BackendConfig) SetDefaults() BackendConfig {
 	if b.Weight == 0 {
 		b.Weight = DefaultWeight
 	}
@@ -126,8 +126,8 @@ func (b BackendConfig) setDefaults() BackendConfig {
 }
 
 func (b BackendConfig) Equal(other BackendConfig) bool {
-	b = b.setDefaults()
-	other = other.setDefaults()
+	b = b.SetDefaults()
+	other = other.SetDefaults()
 	return b == other
 }
 
@@ -215,7 +215,7 @@ type ServiceConfig struct {
 
 // Return a copy  of ServiceConfig with any unset fields to their default
 // values
-func (s ServiceConfig) setDefaults() ServiceConfig {
+func (s ServiceConfig) SetDefaults() ServiceConfig {
 	if s.Balance == "" {
 		s.Balance = DefaultBalance
 	}
@@ -240,8 +240,8 @@ func (s ServiceConfig) Equal(other ServiceConfig) bool {
 	s.Backends = nil
 	other.Backends = nil
 
-	s = s.setDefaults()
-	other = other.setDefaults()
+	s = s.SetDefaults()
+	other = other.SetDefaults()
 
 	sort.Strings(s.VirtualHosts)
 	sort.Strings(s.VirtualHosts)
@@ -283,4 +283,55 @@ func (b *ServiceConfig) Marshal() []byte {
 
 func (b *ServiceConfig) String() string {
 	return string(b.Marshal())
+}
+
+// Update any unset fields with those from the supplied config.
+// FIXME: HTTPSRedirect won't be turned off. Maybe change it to *bool?
+func (s *ServiceConfig) Merge(cfg ServiceConfig) {
+	// let's try not to change the name
+	s.Name = cfg.Name
+
+	if s.Addr == "" {
+		s.Addr = cfg.Addr
+	}
+	if s.Network == "" {
+		s.Network = cfg.Network
+	}
+	if s.Balance == "" {
+		s.Balance = cfg.Balance
+	}
+	if s.CheckInterval == 0 {
+		s.CheckInterval = cfg.CheckInterval
+	}
+	if s.Fall == 0 {
+		s.Fall = cfg.Fall
+	}
+	if s.Rise == 0 {
+		s.Rise = cfg.Rise
+	}
+	if s.ClientTimeout == 0 {
+		s.ClientTimeout = cfg.ClientTimeout
+	}
+	if s.ServerTimeout == 0 {
+		s.ServerTimeout = cfg.ServerTimeout
+	}
+	if s.DialTimeout == 0 {
+		s.DialTimeout = cfg.DialTimeout
+	}
+
+	if cfg.HTTPSRedirect {
+		s.HTTPSRedirect = cfg.HTTPSRedirect
+	}
+
+	if s.VirtualHosts == nil {
+		s.VirtualHosts = cfg.VirtualHosts
+	}
+
+	if s.ErrorPages == nil {
+		s.ErrorPages = cfg.ErrorPages
+	}
+
+	if s.Backends == nil {
+		s.Backends = cfg.Backends
+	}
 }

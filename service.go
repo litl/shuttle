@@ -18,6 +18,8 @@ var (
 		svcs:   make(map[string]*Service),
 		vhosts: make(map[string]*VirtualHost),
 	}
+
+	ErrInvalidServiceUpdate = fmt.Errorf("configuration requires a new service")
 )
 
 type Service struct {
@@ -160,29 +162,39 @@ func NewService(cfg client.ServiceConfig) *Service {
 	return s
 }
 
-// Update the defaults on the running service from a sample config. Only
-// fields that apply to all backends and connections will be updated.
-func (s *Service) UpdateDefaults(cfg client.ServiceConfig) error {
+// Update the running configuration.
+func (s *Service) UpdateConfig(cfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
 
-	if cfg.CheckInterval != 0 {
-		s.CheckInterval = cfg.CheckInterval
+	if s.ClientTimeout != time.Duration(cfg.ClientTimeout)*time.Millisecond {
+		return ErrInvalidServiceUpdate
 	}
-	if cfg.Fall != 0 {
-		s.Fall = cfg.Fall
+
+	if s.Addr != cfg.Addr {
+		return ErrInvalidServiceUpdate
 	}
-	if cfg.Rise != 0 {
-		s.Rise = cfg.Rise
-	}
-	if cfg.ClientTimeout != 0 {
-		s.ClientTimeout = time.Duration(cfg.ClientTimeout) * time.Millisecond
-	}
-	if cfg.ServerTimeout != 0 {
-		s.ServerTimeout = time.Duration(cfg.ServerTimeout) * time.Millisecond
-	}
-	if cfg.DialTimeout != 0 {
-		s.DialTimeout = time.Duration(cfg.DialTimeout) * time.Millisecond
+
+	s.CheckInterval = cfg.CheckInterval
+	s.Fall = cfg.Fall
+	s.Rise = cfg.Rise
+	s.ServerTimeout = time.Duration(cfg.ServerTimeout) * time.Millisecond
+	s.DialTimeout = time.Duration(cfg.DialTimeout) * time.Millisecond
+	s.HTTPSRedirect = cfg.HTTPSRedirect
+
+	if s.Balance != cfg.Balance {
+		s.Balance = cfg.Balance
+		switch s.Balance {
+		case client.RoundRobin:
+			s.next = s.roundRobin
+		case client.LeastConn:
+			s.next = s.leastConn
+		default:
+			if cfg.Balance != "" {
+				log.Warnf("invalid balancing algorithm '%s'", cfg.Balance)
+			}
+			s.next = s.roundRobin
+		}
 	}
 
 	return nil
@@ -225,6 +237,10 @@ func (s *Service) Stats() ServiceStat {
 func (s *Service) Config() client.ServiceConfig {
 	s.Lock()
 	defer s.Unlock()
+	return s.config()
+}
+
+func (s *Service) config() client.ServiceConfig {
 
 	config := client.ServiceConfig{
 		Name:          s.Name,
