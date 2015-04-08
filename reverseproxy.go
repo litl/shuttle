@@ -220,6 +220,7 @@ func (p *ReverseProxy) doRequest(pr *ProxyRequest) (*http.Response, error) {
 		resp, err = transport.RoundTrip(outreq)
 
 		if err == nil {
+			pr.ResponseWriter.Header().Set("X-Backend", addr)
 			return resp, nil
 		}
 

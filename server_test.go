@@ -268,5 +268,9 @@ func checkHTTP(url, host, expected string, status int, c Tester) {
 
 	c.Assert(resp.StatusCode, Equals, status)
 
+	if resp.StatusCode == http.StatusOK {
+		// check for our backend header, without possibly getting a cached error page
+		c.Assert(resp.Header.Get("X-Backend"), Equals, expected)
+	}
 	c.Assert(string(body), Equals, expected)
 }
