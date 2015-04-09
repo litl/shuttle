@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -285,8 +284,7 @@ func (s *Service) add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Printf("Adding %s backend %s for %s at %s", strings.ToUpper(backend.Network),
-		backend.Addr, s.Name, s.Addr)
+	log.Printf("Adding %s backend %s{%s} for %s at %s", backend.Network, backend.Name, backend.Addr, s.Name, s.Addr)
 	backend.up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
@@ -319,7 +317,7 @@ func (s *Service) remove(name string) bool {
 
 	for i, b := range s.Backends {
 		if b.Name == name {
-			log.Printf("Removing %s backend %s for %s at %s", b.Network, b.Addr, s.Name, s.Addr)
+			log.Printf("Removing %s backend %s{%s} for %s at %s", b.Network, b.Name, b.Addr, s.Name, s.Addr)
 			last := len(s.Backends) - 1
 			deleted := b
 			s.Backends[i], s.Backends[last] = s.Backends[last], nil
