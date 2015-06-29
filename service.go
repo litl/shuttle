@@ -170,7 +170,7 @@ func (s *Service) UpdateConfig(cfg client.ServiceConfig) error {
 		return ErrInvalidServiceUpdate
 	}
 
-	if s.Addr != cfg.Addr {
+	if s.Addr != "" && s.Addr != cfg.Addr {
 		return ErrInvalidServiceUpdate
 	}
 
