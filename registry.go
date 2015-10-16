@@ -293,7 +293,7 @@ func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 	}
 
 	currentCfg := service.Config()
-	newCfg.Merge(currentCfg)
+	newCfg = currentCfg.Merge(newCfg)
 
 	if err := service.UpdateConfig(newCfg); err != nil {
 		return err

@@ -401,36 +401,35 @@ func (e *ErrorResponse) CheckResponse(pr *ProxyRequest) bool {
 	return true
 }
 
+func logRequest(req *http.Request, statusCode int, backend string, proxyError error, duration time.Duration) {
+	id := req.Header.Get("X-Request-Id")
+	method := req.Method
+	url := req.Host + req.RequestURI
+	agent := req.UserAgent()
+
+	clientIP := req.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = req.RemoteAddr
+	}
+
+	errStr := fmt.Sprintf("%v", proxyError)
+	fmtStr := "id=%s method=%s client-ip=%s url=%s backend=%s status=%d duration=%s agent=%s, err=%s"
+	log.Printf(fmtStr, id, method, clientIP, url, backend, statusCode, duration, agent, errStr)
+}
+
 func logProxyRequest(pr *ProxyRequest) bool {
 	// TODO: we may to be able to switch this off
 	if pr == nil || pr.Request == nil {
 		return true
 	}
 
-	var id, method, clientIP, url, backend, agent string
-	var status int
-
 	duration := pr.FinishTime.Sub(pr.StartTime)
 
-	id = pr.Request.Header.Get("X-Request-Id")
-	method = pr.Request.Method
-	url = pr.Request.Host + pr.Request.RequestURI
-	agent = pr.Request.UserAgent()
-	status = pr.Response.StatusCode
-
-	clientIP = pr.Request.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = pr.Request.RemoteAddr
-	}
-
+	var backend string
 	if pr.Response != nil && pr.Response.Request != nil && pr.Response.Request.URL != nil {
 		backend = pr.Response.Request.URL.Host
 	}
 
-	err := fmt.Sprintf("%v", pr.ProxyError)
-
-	fmtStr := "id=%s method=%s client-ip=%s url=%s backend=%s status=%d duration=%s agent=%s, err=%s"
-
-	log.Printf(fmtStr, id, method, clientIP, url, backend, status, duration, agent, err)
+	logRequest(pr.Request, pr.Response.StatusCode, backend, pr.ProxyError, duration)
 	return true
 }
