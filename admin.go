@@ -26,10 +26,22 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshal(Registry.Stats()))
 }
 
-func getService(w http.ResponseWriter, r *http.Request) {
+func getServiceStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	serviceStats, err := Registry.ServiceStats(vars["service"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Write(marshal(serviceStats))
+}
+
+func getServiceConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	serviceStats, err := Registry.ServiceConfig(vars["service"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -120,6 +132,20 @@ func deleteService(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshal(Registry.Config()))
 }
 
+func getBackendStats(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	serviceName := vars["service"]
+	backendName := vars["backend"]
+
+	backend, err := Registry.BackendStats(serviceName, backendName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Write(marshal(backend))
+}
+
 func getBackend(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	serviceName := vars["service"]
@@ -187,7 +213,9 @@ func addHandlers() {
 	r.HandleFunc("/_config", getConfig).Methods("GET")
 	r.HandleFunc("/_config", postConfig).Methods("PUT", "POST")
 	r.HandleFunc("/_stats", getStats).Methods("GET")
-	r.HandleFunc("/{service}", getService).Methods("GET")
+	r.HandleFunc("/{service}", getServiceStats).Methods("GET")
+	r.HandleFunc("/{service}/_config", getServiceConfig).Methods("GET")
+	r.HandleFunc("/{service}/_stats", getServiceStats).Methods("GET")
 	r.HandleFunc("/{service}", postService).Methods("PUT", "POST")
 	r.HandleFunc("/{service}", deleteService).Methods("DELETE")
 	r.HandleFunc("/{service}/{backend}", getBackend).Methods("GET")
