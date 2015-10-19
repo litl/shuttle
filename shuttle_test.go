@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 func init() {
-	debug = false
+	debug = os.Getenv("SHUTTLE_DEBUG") == "1"
 
 	if debug {
 		log.DefaultLogger.Level = log.DEBUG

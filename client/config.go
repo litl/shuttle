@@ -211,6 +211,10 @@ type ServiceConfig struct {
 
 	// Backends is a list of all servers handling connections for this service.
 	Backends []BackendConfig `json:"backends,omitempty"`
+
+	// Maintenance mode is a flag to return 503 status codes to clients
+	// without visiting backends.
+	MaintenanceMode bool `json:"maintenance_mode"`
 }
 
 // Return a copy  of ServiceConfig with any unset fields to their default
@@ -285,53 +289,56 @@ func (b *ServiceConfig) String() string {
 	return string(b.Marshal())
 }
 
-// Update any unset fields with those from the supplied config.
-// FIXME: HTTPSRedirect won't be turned off. Maybe change it to *bool?
-func (s *ServiceConfig) Merge(cfg ServiceConfig) {
+// Create a new config by merging the values from the current config
+// with those set in the new config
+func (s ServiceConfig) Merge(cfg ServiceConfig) ServiceConfig {
+	new := s
+
 	// let's try not to change the name
-	s.Name = cfg.Name
+	new.Name = cfg.Name
 
-	if s.Addr == "" {
-		s.Addr = cfg.Addr
+	if cfg.Addr != "" {
+		new.Addr = cfg.Addr
 	}
-	if s.Network == "" {
-		s.Network = cfg.Network
+	if cfg.Network != "" {
+		new.Network = cfg.Network
 	}
-	if s.Balance == "" {
-		s.Balance = cfg.Balance
+	if cfg.Balance != "" {
+		new.Balance = cfg.Balance
 	}
-	if s.CheckInterval == 0 {
-		s.CheckInterval = cfg.CheckInterval
+	if cfg.CheckInterval != 0 {
+		new.CheckInterval = cfg.CheckInterval
 	}
-	if s.Fall == 0 {
-		s.Fall = cfg.Fall
+	if cfg.Fall != 0 {
+		new.Fall = cfg.Fall
 	}
-	if s.Rise == 0 {
-		s.Rise = cfg.Rise
+	if cfg.Rise != 0 {
+		new.Rise = cfg.Rise
 	}
-	if s.ClientTimeout == 0 {
-		s.ClientTimeout = cfg.ClientTimeout
+	if cfg.ClientTimeout != 0 {
+		new.ClientTimeout = cfg.ClientTimeout
 	}
-	if s.ServerTimeout == 0 {
-		s.ServerTimeout = cfg.ServerTimeout
+	if cfg.ServerTimeout != 0 {
+		new.ServerTimeout = cfg.ServerTimeout
 	}
-	if s.DialTimeout == 0 {
-		s.DialTimeout = cfg.DialTimeout
-	}
-
-	if cfg.HTTPSRedirect {
-		s.HTTPSRedirect = cfg.HTTPSRedirect
+	if cfg.DialTimeout != 0 {
+		new.DialTimeout = cfg.DialTimeout
 	}
 
-	if s.VirtualHosts == nil {
-		s.VirtualHosts = cfg.VirtualHosts
+	if cfg.VirtualHosts != nil {
+		new.VirtualHosts = cfg.VirtualHosts
 	}
 
-	if s.ErrorPages == nil {
-		s.ErrorPages = cfg.ErrorPages
+	if cfg.ErrorPages != nil {
+		new.ErrorPages = cfg.ErrorPages
 	}
 
-	if s.Backends == nil {
-		s.Backends = cfg.Backends
+	if cfg.Backends != nil {
+		new.Backends = cfg.Backends
 	}
+
+	new.HTTPSRedirect = cfg.HTTPSRedirect
+	new.MaintenanceMode = cfg.MaintenanceMode
+
+	return new
 }

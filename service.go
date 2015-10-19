@@ -23,25 +23,26 @@ var (
 
 type Service struct {
 	sync.Mutex
-	Name          string
-	Addr          string
-	HTTPSRedirect bool
-	VirtualHosts  []string
-	Backends      []*Backend
-	Balance       string
-	CheckInterval int
-	Fall          int
-	Rise          int
-	ClientTimeout time.Duration
-	ServerTimeout time.Duration
-	DialTimeout   time.Duration
-	Sent          int64
-	Rcvd          int64
-	Errors        int64
-	HTTPConns     int64
-	HTTPErrors    int64
-	HTTPActive    int64
-	Network       string
+	Name            string
+	Addr            string
+	HTTPSRedirect   bool
+	VirtualHosts    []string
+	Backends        []*Backend
+	Balance         string
+	CheckInterval   int
+	Fall            int
+	Rise            int
+	ClientTimeout   time.Duration
+	ServerTimeout   time.Duration
+	DialTimeout     time.Duration
+	Sent            int64
+	Rcvd            int64
+	Errors          int64
+	HTTPConns       int64
+	HTTPErrors      int64
+	HTTPActive      int64
+	Network         string
+	MaintenanceMode bool
 
 	// Next returns the backends in priority order.
 	next func() []*Backend
@@ -93,20 +94,21 @@ type ServiceStat struct {
 // Create a Service from a config struct
 func NewService(cfg client.ServiceConfig) *Service {
 	s := &Service{
-		Name:          cfg.Name,
-		Addr:          cfg.Addr,
-		Balance:       cfg.Balance,
-		CheckInterval: cfg.CheckInterval,
-		Fall:          cfg.Fall,
-		Rise:          cfg.Rise,
-		HTTPSRedirect: cfg.HTTPSRedirect,
-		VirtualHosts:  cfg.VirtualHosts,
-		ClientTimeout: time.Duration(cfg.ClientTimeout) * time.Millisecond,
-		ServerTimeout: time.Duration(cfg.ServerTimeout) * time.Millisecond,
-		DialTimeout:   time.Duration(cfg.DialTimeout) * time.Millisecond,
-		errorPages:    NewErrorResponse(cfg.ErrorPages),
-		errPagesCfg:   cfg.ErrorPages,
-		Network:       cfg.Network,
+		Name:            cfg.Name,
+		Addr:            cfg.Addr,
+		Balance:         cfg.Balance,
+		CheckInterval:   cfg.CheckInterval,
+		Fall:            cfg.Fall,
+		Rise:            cfg.Rise,
+		HTTPSRedirect:   cfg.HTTPSRedirect,
+		VirtualHosts:    cfg.VirtualHosts,
+		ClientTimeout:   time.Duration(cfg.ClientTimeout) * time.Millisecond,
+		ServerTimeout:   time.Duration(cfg.ServerTimeout) * time.Millisecond,
+		DialTimeout:     time.Duration(cfg.DialTimeout) * time.Millisecond,
+		errorPages:      NewErrorResponse(cfg.ErrorPages),
+		errPagesCfg:     cfg.ErrorPages,
+		Network:         cfg.Network,
+		MaintenanceMode: cfg.MaintenanceMode,
 	}
 
 	// TODO: insert this into the backends too
@@ -180,6 +182,7 @@ func (s *Service) UpdateConfig(cfg client.ServiceConfig) error {
 	s.ServerTimeout = time.Duration(cfg.ServerTimeout) * time.Millisecond
 	s.DialTimeout = time.Duration(cfg.DialTimeout) * time.Millisecond
 	s.HTTPSRedirect = cfg.HTTPSRedirect
+	s.MaintenanceMode = cfg.MaintenanceMode
 
 	if s.Balance != cfg.Balance {
 		s.Balance = cfg.Balance
@@ -242,19 +245,20 @@ func (s *Service) Config() client.ServiceConfig {
 func (s *Service) config() client.ServiceConfig {
 
 	config := client.ServiceConfig{
-		Name:          s.Name,
-		Addr:          s.Addr,
-		VirtualHosts:  s.VirtualHosts,
-		HTTPSRedirect: s.HTTPSRedirect,
-		Balance:       s.Balance,
-		CheckInterval: s.CheckInterval,
-		Fall:          s.Fall,
-		Rise:          s.Rise,
-		ClientTimeout: int(s.ClientTimeout / time.Millisecond),
-		ServerTimeout: int(s.ServerTimeout / time.Millisecond),
-		DialTimeout:   int(s.DialTimeout / time.Millisecond),
-		ErrorPages:    s.errPagesCfg,
-		Network:       s.Network,
+		Name:            s.Name,
+		Addr:            s.Addr,
+		VirtualHosts:    s.VirtualHosts,
+		HTTPSRedirect:   s.HTTPSRedirect,
+		Balance:         s.Balance,
+		CheckInterval:   s.CheckInterval,
+		Fall:            s.Fall,
+		Rise:            s.Rise,
+		ClientTimeout:   int(s.ClientTimeout / time.Millisecond),
+		ServerTimeout:   int(s.ServerTimeout / time.Millisecond),
+		DialTimeout:     int(s.DialTimeout / time.Millisecond),
+		ErrorPages:      s.errPagesCfg,
+		Network:         s.Network,
+		MaintenanceMode: s.MaintenanceMode,
 	}
 	for _, b := range s.Backends {
 		config.Backends = append(config.Backends, b.Config())
@@ -452,6 +456,10 @@ func (s *Service) Available() int {
 	s.Lock()
 	defer s.Unlock()
 
+	if s.MaintenanceMode {
+		return 0
+	}
+
 	available := 0
 	for _, b := range s.Backends {
 		if b.Up() {
@@ -576,6 +584,23 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, redirLoc, http.StatusMovedPermanently)
 			return
 		}
+	}
+
+	if s.MaintenanceMode {
+		// TODO: Should we increment HTTPErrors here as well?
+		logRequest(r, http.StatusServiceUnavailable, "", nil, 0)
+		errPage := s.errorPages.Get(http.StatusServiceUnavailable)
+		if errPage != nil {
+			headers := w.Header()
+			for key, val := range errPage.Header() {
+				headers[key] = val
+			}
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if errPage != nil {
+			w.Write(errPage.Body())
+		}
+		return
 	}
 
 	s.httpProxy.ServeHTTP(w, r, s.NextAddrs())

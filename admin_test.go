@@ -714,3 +714,55 @@ func (s *HTTPSuite) TestHTTPSRedirect(c *C) {
 	}
 	c.Assert(resp.StatusCode, Equals, http.StatusOK)
 }
+
+func (s *HTTPSuite) TestMaintenanceMode(c *C) {
+	mainServer := s.backendServers[0]
+	errServer := s.backendServers[1]
+
+	svcCfg := client.ServiceConfig{
+		Name:         "VHostTest1",
+		Addr:         "127.0.0.1:9000",
+		VirtualHosts: []string{"vhost1.test"},
+		Backends: []client.BackendConfig{
+			{Addr: mainServer.addr},
+		},
+		MaintenanceMode: true,
+	}
+
+	if err := Registry.AddService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	// No error page is registered, so we should just get a 503 error with no body
+	checkHTTP("https://vhost1.test:"+s.httpsPort+"/addr", "vhost1.test", "", 503, c)
+
+	// Use another backend to provide the error page
+	svcCfg.ErrorPages = map[string][]int{
+		"http://" + errServer.addr + "/error?code=503": []int{503},
+	}
+
+	if err := Registry.UpdateService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	// Get a 503 error with the cached body
+	checkHTTP("https://vhost1.test:"+s.httpsPort+"/addr", "vhost1.test", errServer.addr, 503, c)
+
+	// Turn maintenance mode off
+	svcCfg.MaintenanceMode = false
+
+	if err := Registry.UpdateService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	checkHTTP("https://vhost1.test:"+s.httpsPort+"/addr", "vhost1.test", mainServer.addr, 200, c)
+
+	// Turn it back on
+	svcCfg.MaintenanceMode = true
+
+	if err := Registry.UpdateService(svcCfg); err != nil {
+		c.Fatal(err)
+	}
+
+	checkHTTP("https://vhost1.test:"+s.httpsPort+"/addr", "vhost1.test", errServer.addr, 503, c)
+}
