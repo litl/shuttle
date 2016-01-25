@@ -4,7 +4,7 @@
 TAG :=`git describe --tags`
 
 VERSION = `git describe --tags 2>/dev/null || git rev-parse --short HEAD 2>/dev/null`
-LDFLAGS = -X main.buildVersion $(VERSION)
+LDFLAGS = -X main.buildVersion=$(VERSION)
 
 all: shuttle
 
