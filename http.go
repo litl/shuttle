@@ -46,7 +46,12 @@ func NewHostRouter(httpServer *http.Server) *HostRouter {
 }
 
 func (r *HostRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	reqId := genId()
+	reqId := req.Header.Get("X-Request-Id")
+	if reqId == "" {
+		reqId = genId()
+	} else {
+		reqId = genId() + "." + reqId
+	}
 	req.Header.Set("X-Request-Id", reqId)
 	w.Header().Add("X-Request-Id", reqId)
 
