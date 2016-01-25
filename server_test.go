@@ -229,6 +229,7 @@ func checkHTTP(url, host, expected string, status int, c Tester) {
 	}
 
 	req.Host = host
+	req.Header.Set("X-Request-Id", "foo")
 
 	// Load our test certs as our RootCAs, so we can verify that we connect
 	// with the correct Cert in an HTTPSRouter
@@ -265,6 +266,9 @@ func checkHTTP(url, host, expected string, status int, c Tester) {
 	if err != nil {
 		c.Fatal(err)
 	}
+
+	reqID := resp.Header.Get("X-Request-Id")
+	c.Assert(reqID[len(reqID)-4:], Equals, ".foo")
 
 	c.Assert(resp.StatusCode, Equals, status)
 
