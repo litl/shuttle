@@ -4,7 +4,7 @@
 TAG :=`git describe --tags`
 
 VERSION = `git describe --tags 2>/dev/null || git rev-parse --short HEAD 2>/dev/null`
-LDFLAGS = -X main.buildVersion $(VERSION)
+LDFLAGS = -X main.buildVersion=$(VERSION)
 
 all: shuttle
 
@@ -47,12 +47,7 @@ dist-darwin-amd64:
 	export GOARCH="amd64"; \
 	$(MAKE) dist-build
 
-dist-darwin-386:
-	export GOOS="darwin"; \
-	export GOARCH="386"; \
-	$(MAKE) dist-build
-
-dist: dist-clean dist-init dist-linux-amd64 dist-linux-386 dist-darwin-amd64 dist-darwin-386
+dist: dist-clean dist-init dist-linux-amd64 dist-linux-386 dist-darwin-amd64
 
 release-tarball:
 	echo "Building $$GOOS-$$GOARCH-$(TAG).tar.gz"
@@ -73,9 +68,4 @@ release-darwin-amd64:
 	export GOARCH="amd64"; \
 	$(MAKE) release-tarball
 
-release-darwin-386:
-	export GOOS="darwin"; \
-	export GOARCH="386"; \
-	$(MAKE) release-tarball
-
-release: deps dist release-linux-amd64 release-linux-386 release-darwin-amd64 release-darwin-386
+release: deps dist release-linux-amd64 release-linux-386 release-darwin-amd64
