@@ -27,6 +27,24 @@ type HTTPSuite struct {
 
 var _ = Suite(&HTTPSuite{})
 
+var (
+	tempPort = 19000
+	// protects tempPort
+	portMu sync.Mutex
+)
+
+// return a unique 127.0.0.1:PORT for each test
+func localPort() string {
+	portMu.Lock()
+	defer portMu.Unlock()
+	tempPort++
+	return fmt.Sprintf("127.0.0.1:%d", tempPort)
+}
+
+func localAddrBody() *bytes.Reader {
+	return bytes.NewReader([]byte(fmt.Sprintf(`{"address": "%s"}`, localPort())))
+}
+
 func (s *HTTPSuite) SetUpSuite(c *C) {
 	Registry = ServiceRegistry{
 		svcs:   make(map[string]*Service),
@@ -127,7 +145,7 @@ func (s *HTTPSuite) TearDownTest(c *C) {
 
 // These don't yet *really* test anything other than code coverage
 func (s *HTTPSuite) TestAddService(c *C) {
-	svcDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9000"}`))
+	svcDef := localAddrBody()
 	req, _ := http.NewRequest("PUT", s.httpSvr.URL+"/testService", svcDef)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -140,14 +158,14 @@ func (s *HTTPSuite) TestAddService(c *C) {
 }
 
 func (s *HTTPSuite) TestAddBackend(c *C) {
-	svcDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9000"}`))
+	svcDef := localAddrBody()
 	req, _ := http.NewRequest("PUT", s.httpSvr.URL+"/testService", svcDef)
 	_, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Fatal(err)
 	}
 
-	backendDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9001"}`))
+	backendDef := localAddrBody()
 	req, _ = http.NewRequest("PUT", s.httpSvr.URL+"/testService/testBackend", backendDef)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -160,14 +178,14 @@ func (s *HTTPSuite) TestAddBackend(c *C) {
 }
 
 func (s *HTTPSuite) TestReAddBackend(c *C) {
-	svcDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9000"}`))
+	svcDef := localAddrBody()
 	req, _ := http.NewRequest("PUT", s.httpSvr.URL+"/testService", svcDef)
 	_, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Fatal(err)
 	}
 
-	backendDef := bytes.NewReader([]byte(`{"address": "127.0.0.1:9001"}`))
+	backendDef := localAddrBody()
 	req, _ = http.NewRequest("PUT", s.httpSvr.URL+"/testService/testBackend", backendDef)
 	firstResp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -177,7 +195,7 @@ func (s *HTTPSuite) TestReAddBackend(c *C) {
 
 	firstBody, _ := ioutil.ReadAll(firstResp.Body)
 
-	backendDef = bytes.NewReader([]byte(`{"address": "127.0.0.1:9001"}`))
+	backendDef.Seek(0, 0)
 	req, _ = http.NewRequest("PUT", s.httpSvr.URL+"/testService/testBackend", backendDef)
 	secResp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -196,16 +214,16 @@ func (s *HTTPSuite) TestSimulAdd(c *C) {
 
 	svcCfg := client.ServiceConfig{
 		Name:         "TestService",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost"},
 		Backends: []client.BackendConfig{
 			client.BackendConfig{
 				Name: "vhost1",
-				Addr: "127.0.0.1:9001",
+				Addr: localPort(),
 			},
 			client.BackendConfig{
 				Name: "vhost2",
-				Addr: "127.0.0.1:9002",
+				Addr: localPort(),
 			},
 		},
 	}
@@ -242,7 +260,7 @@ func (s *HTTPSuite) TestSimulAdd(c *C) {
 func (s *HTTPSuite) TestRouter(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name:         "VHostTest",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost"},
 	}
 
@@ -267,7 +285,7 @@ func (s *HTTPSuite) TestRouter(c *C) {
 func (s *HTTPSuite) TestAddRemoveVHosts(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name:         "VHostTest",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost"},
 	}
 
@@ -317,13 +335,13 @@ func (s *HTTPSuite) TestAddRemoveVHosts(c *C) {
 func (s *HTTPSuite) TestMultiServiceVHost(c *C) {
 	svcCfgOne := client.ServiceConfig{
 		Name:         "VHostTest",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost"},
 	}
 
 	svcCfgTwo := client.ServiceConfig{
 		Name:         "VHostTest2",
-		Addr:         "127.0.0.1:9001",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost-2"},
 	}
 
@@ -358,7 +376,7 @@ func (s *HTTPSuite) TestMultiServiceVHost(c *C) {
 func (s *HTTPSuite) TestAddRemoveBackends(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name: "VHostTest",
-		Addr: "127.0.0.1:9000",
+		Addr: localPort(),
 	}
 
 	err := Registry.AddService(svcCfg)
@@ -402,7 +420,7 @@ func (s *HTTPSuite) TestAddRemoveBackends(c *C) {
 func (s *HTTPSuite) TestHTTPAddRemoveBackends(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name: "VHostTest",
-		Addr: "127.0.0.1:9000",
+		Addr: localPort(),
 	}
 
 	err := Registry.AddService(svcCfg)
@@ -466,7 +484,7 @@ func (s *HTTPSuite) TestHTTPAddRemoveBackends(c *C) {
 func (s *HTTPSuite) TestErrorPage(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name:         "VHostTest",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"test-vhost"},
 	}
 
@@ -516,11 +534,11 @@ func (s *HTTPSuite) TestErrorPage(c *C) {
 func (s *HTTPSuite) TestUpdateServiceDefaults(c *C) {
 	svcCfg := client.ServiceConfig{
 		Name: "TestService",
-		Addr: "127.0.0.1:9000",
+		Addr: localPort(),
 		Backends: []client.BackendConfig{
 			client.BackendConfig{
 				Name: "Backend1",
-				Addr: "127.0.0.1:9001",
+				Addr: localPort(),
 			},
 		},
 	}
@@ -590,7 +608,7 @@ func (s *HTTPSuite) TestGlobalDefaults(c *C) {
 
 	svcCfg := client.ServiceConfig{
 		Name: "TestService",
-		Addr: "127.0.0.1:9000",
+		Addr: localPort(),
 	}
 
 	svcDef := bytes.NewBuffer(svcCfg.Marshal())
@@ -622,7 +640,7 @@ func (s *HTTPSuite) TestHTTPSRouter(c *C) {
 
 	svcCfgOne := client.ServiceConfig{
 		Name:         "VHostTest1",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"vhost1.test", "alt.vhost1.test", "star.vhost1.test"},
 		Backends: []client.BackendConfig{
 			{Addr: srv1.addr},
@@ -631,7 +649,7 @@ func (s *HTTPSuite) TestHTTPSRouter(c *C) {
 
 	svcCfgTwo := client.ServiceConfig{
 		Name:         "VHostTest2",
-		Addr:         "127.0.0.1:9001",
+		Addr:         localPort(),
 		VirtualHosts: []string{"vhost2.test", "alt.vhost2.test", "star.vhost2.test"},
 		Backends: []client.BackendConfig{
 			{Addr: srv2.addr},
@@ -666,7 +684,7 @@ func (s *HTTPSuite) TestHTTPSRedirect(c *C) {
 
 	svcCfgOne := client.ServiceConfig{
 		Name:          "VHostTest1",
-		Addr:          "127.0.0.1:9000",
+		Addr:          localPort(),
 		HTTPSRedirect: true,
 		VirtualHosts:  []string{"vhost1.test", "alt.vhost1.test", "star.vhost1.test"},
 		Backends: []client.BackendConfig{
@@ -721,7 +739,7 @@ func (s *HTTPSuite) TestMaintenanceMode(c *C) {
 
 	svcCfg := client.ServiceConfig{
 		Name:         "VHostTest1",
-		Addr:         "127.0.0.1:9000",
+		Addr:         localPort(),
 		VirtualHosts: []string{"vhost1.test"},
 		Backends: []client.BackendConfig{
 			{Addr: mainServer.addr},
